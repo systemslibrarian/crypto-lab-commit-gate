@@ -1,5 +1,21 @@
 :root {
   color-scheme: dark;
+  --ink: #e5e7eb;
+  --paper: #0b1020;
+  --card: #111827;
+  --line: #334155;
+  --surface-1: #0f172a;
+  --surface-2: #1e293b;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+  --ink: #1f2937;
+  --paper: #eef2ff;
+  --card: #ffffff;
+  --line: #cbd5e1;
+  --surface-1: #f8fafc;
+  --surface-2: #e2e8f0;
 }
 
 * {
@@ -10,8 +26,8 @@ body {
   margin: 0;
   min-height: 100vh;
   font-family: sans-serif;
-  background: #0b1020;
-  color: #e5e7eb;
+  background: var(--paper);
+  color: var(--ink);
 }
 
 .shell {
@@ -20,7 +36,24 @@ body {
 }
 
 .hero {
-  border: 1px solid #334155;
+  position: relative;
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 1rem;
+  background: var(--card);
+}
+
+.theme-toggle {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--ink);
+  cursor: pointer;
+  z-index: 10;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-2);
 }
