@@ -100,7 +100,7 @@ const render = (): void => {
   app.innerHTML = `
     <main class="shell" id="main-content">
       <header class="hero">
-        <button id="theme-toggle" class="theme-toggle" type="button" style="position: absolute; top: 0.5rem; right: 0.5rem" aria-label="Switch to light mode"></button>
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
         <p class="eyebrow">systemslibrarian · crypto-lab</p>
         <h1>crypto-lab-commit-gate</h1>
         <p>
@@ -113,8 +113,9 @@ const render = (): void => {
         <h2 id="exhibit-1-heading">Exhibit 1 — Commit and Open</h2>
         <p>Committer Alice seals a value for Verifier Bob, then later opens with message + blinding factor.</p>
         <div class="controls-grid">
-          <label for="e1-message">Message</label>
-          <input id="e1-message" type="text" value="42" />
+          <label for="e1-message">Message
+            <input id="e1-message" type="text" value="42" />
+          </label>
         </div>
         <div class="button-row">
           <button id="e1-commit" type="button">Commit</button>
@@ -142,8 +143,9 @@ const render = (): void => {
         </div>
         <p class="mono" aria-live="polite">${escapeHtml(state.bindingText)}</p>
         <div class="controls-grid">
-          <label for="e2-broken-message">Broken commitment message</label>
-          <input id="e2-broken-message" type="text" value="yes" />
+          <label for="e2-broken-message">Broken commitment message
+            <input id="e2-broken-message" type="text" value="yes" />
+          </label>
         </div>
         <div class="button-row">
           <button id="e2-broken-commit" type="button">Commit without blinding</button>
@@ -174,10 +176,12 @@ const render = (): void => {
           range proofs, and many ZKP constructions.
         </p>
         <div class="controls-grid">
-          <label for="e4-m1">m1</label>
-          <input id="e4-m1" type="number" value="12" min="0" />
-          <label for="e4-m2">m2</label>
-          <input id="e4-m2" type="number" value="31" min="0" />
+          <label for="e4-m1">m1
+            <input id="e4-m1" type="number" value="12" min="0" />
+          </label>
+          <label for="e4-m2">m2
+            <input id="e4-m2" type="number" value="31" min="0" />
+          </label>
         </div>
         <div class="button-row">
           <button id="e4-commit-open" type="button">Commit and open one value</button>
@@ -191,12 +195,15 @@ const render = (): void => {
         <h2 id="exhibit-5-heading">Exhibit 5 — Sealed Bid Auction</h2>
         <p>All bidders commit first, then reveal. No one can change bids after seeing others.</p>
         <div class="controls-grid">
-          <label for="e5-bid-alice">Alice bid</label>
-          <input id="e5-bid-alice" type="number" value="23" min="0" />
-          <label for="e5-bid-bob">Bob bid</label>
-          <input id="e5-bid-bob" type="number" value="31" min="0" />
-          <label for="e5-bid-carol">Carol bid</label>
-          <input id="e5-bid-carol" type="number" value="28" min="0" />
+          <label for="e5-bid-alice">Alice bid
+            <input id="e5-bid-alice" type="number" value="23" min="0" />
+          </label>
+          <label for="e5-bid-bob">Bob bid
+            <input id="e5-bid-bob" type="number" value="31" min="0" />
+          </label>
+          <label for="e5-bid-carol">Carol bid
+            <input id="e5-bid-carol" type="number" value="28" min="0" />
+          </label>
         </div>
         <div class="button-row">
           <button id="e5-commit" type="button">Publish commitments</button>
