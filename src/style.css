@@ -33,10 +33,33 @@ body {
 .shell {
   width: min(980px, 92vw);
   margin: 2rem auto;
+  display: grid;
+  gap: 1rem;
 }
 
 .hero {
   position: relative;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--card);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin-top: 0;
+}
+
+.exhibit {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 1rem;
@@ -56,4 +79,124 @@ body {
 
 .theme-toggle:hover {
   background: var(--surface-2);
+}
+
+.controls-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+label {
+  display: grid;
+  gap: 0.3rem;
+}
+
+input,
+button {
+  font: inherit;
+}
+
+input {
+  min-height: 2.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--ink);
+  padding: 0.5rem 0.65rem;
+}
+
+.button-row {
+  margin: 0.8rem 0;
+  display: flex;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+button {
+  min-height: 2.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface-1);
+  color: var(--ink);
+  padding: 0.5rem 0.85rem;
+  cursor: pointer;
+}
+
+button:hover {
+  background: var(--surface-2);
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.86rem;
+  overflow-wrap: anywhere;
+}
+
+.envelope {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 0.8rem;
+  background: var(--surface-1);
+  transition: transform 180ms ease;
+}
+
+.envelope.sealed {
+  transform: scale(0.99);
+}
+
+.envelope.opened {
+  transform: scale(1);
+}
+
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border-bottom: 1px solid var(--line);
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.map-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+}
+
+.map-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.8rem;
+  text-decoration: none;
+  color: inherit;
+  background: var(--surface-1);
+}
+
+.map-card:hover {
+  background: var(--surface-2);
+}
+
+@media (max-width: 720px) {
+  .shell {
+    width: min(98vw, 980px);
+    margin-top: 1rem;
+  }
+
+  .button-row {
+    flex-direction: column;
+  }
+
+  .button-row button {
+    width: 100%;
+  }
 }
