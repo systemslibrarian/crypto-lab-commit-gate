@@ -100,7 +100,7 @@ const render = (): void => {
   app.innerHTML = `
     <main class="shell" id="main-content">
       <header class="hero">
-        <button id="theme-toggle" class="theme-toggle" type="button" style="position: absolute; top: 0; right: 0"></button>
+        <button id="theme-toggle" class="theme-toggle" type="button" style="position: absolute; top: 0.5rem; right: 0.5rem" aria-label="Switch to light mode"></button>
         <p class="eyebrow">systemslibrarian · crypto-lab</p>
         <h1>crypto-lab-commit-gate</h1>
         <p>
@@ -109,24 +109,23 @@ const render = (): void => {
         </p>
       </header>
 
-      <section class="exhibit">
-        <h2>Exhibit 1 — Commit and Open</h2>
+      <section class="exhibit" aria-labelledby="exhibit-1-heading">
+        <h2 id="exhibit-1-heading">Exhibit 1 — Commit and Open</h2>
         <p>Committer Alice seals a value for Verifier Bob, then later opens with message + blinding factor.</p>
         <div class="controls-grid">
-          <label>Message
-            <input id="e1-message" type="text" value="42" />
-          </label>
+          <label for="e1-message">Message</label>
+          <input id="e1-message" type="text" value="42" />
         </div>
         <div class="button-row">
           <button id="e1-commit" type="button">Commit</button>
           <button id="e1-open" type="button">Open</button>
         </div>
-        <div class="envelope ${state.hashOpen?.opened ? 'opened' : 'sealed'}">
+        <div class="envelope ${state.hashOpen?.opened ? 'opened' : 'sealed'}" role="status">
           <div><strong>Committer:</strong> Alice</div>
-          <div><strong>Commitment:</strong> ${state.hashOpen ? escapeHtml(state.hashOpen.commitmentHex) : 'none yet'}</div>
+          <div><strong>Commitment:</strong> <span class="mono">${state.hashOpen ? escapeHtml(state.hashOpen.commitmentHex) : 'none yet'}</span></div>
           <div><strong>Verifier:</strong> Bob</div>
         </div>
-        <p class="mono">
+        <p class="mono" aria-live="polite">
           ${
             state.hashOpen
               ? `r=${escapeHtml(state.hashOpen.blindingHex)} | verify=${state.hashOpen.verified ? 'pass' : 'pending/fail'}`
@@ -135,28 +134,27 @@ const render = (): void => {
         </p>
       </section>
 
-      <section class="exhibit">
-        <h2>Exhibit 2 — Binding Property</h2>
+      <section class="exhibit" aria-labelledby="exhibit-2-heading">
+        <h2 id="exhibit-2-heading">Exhibit 2 — Binding Property</h2>
         <p>Try to open one commitment to two different messages, then compare with broken no-blinding commitments.</p>
         <div class="button-row">
           <button id="e2-binding" type="button">Attempt collision search</button>
         </div>
-        <p class="mono">${escapeHtml(state.bindingText)}</p>
+        <p class="mono" aria-live="polite">${escapeHtml(state.bindingText)}</p>
         <div class="controls-grid">
-          <label>Broken commitment message
-            <input id="e2-broken-message" type="text" value="yes" />
-          </label>
+          <label for="e2-broken-message">Broken commitment message</label>
+          <input id="e2-broken-message" type="text" value="yes" />
         </div>
         <div class="button-row">
           <button id="e2-broken-commit" type="button">Commit without blinding</button>
           <button id="e2-dictionary" type="button">Run dictionary attack</button>
         </div>
-        <p class="mono">Broken commitment: ${escapeHtml(state.brokenCommitHex || 'none')}</p>
-        <p class="mono">${escapeHtml(state.dictionaryResult)}</p>
+        <p class="mono" aria-live="polite">Broken commitment: ${escapeHtml(state.brokenCommitHex || 'none')}</p>
+        <p class="mono" aria-live="polite">${escapeHtml(state.dictionaryResult)}</p>
       </section>
 
-      <section class="exhibit">
-        <h2>Exhibit 3 — Hiding Property</h2>
+      <section class="exhibit" aria-labelledby="exhibit-3-heading">
+        <h2 id="exhibit-3-heading">Exhibit 3 — Hiding Property</h2>
         <p>
           Hash commitments are computationally hiding, while Pedersen commitments are perfectly hiding (information-theoretic)
           under standard assumptions.
@@ -164,54 +162,50 @@ const render = (): void => {
         <div class="button-row">
           <button id="e3-run" type="button">Run indistinguishability stats</button>
         </div>
-        <p class="mono">C(0): ${escapeHtml(state.hidingCommit0 || 'not generated')}</p>
-        <p class="mono">C(1): ${escapeHtml(state.hidingCommit1 || 'not generated')}</p>
-        <p class="mono">${escapeHtml(state.hidingResult)}</p>
+        <p class="mono" aria-live="polite">C(0): ${escapeHtml(state.hidingCommit0 || 'not generated')}</p>
+        <p class="mono" aria-live="polite">C(1): ${escapeHtml(state.hidingCommit1 || 'not generated')}</p>
+        <p class="mono" aria-live="polite">${escapeHtml(state.hidingResult)}</p>
       </section>
 
-      <section class="exhibit">
-        <h2>Exhibit 4 — Homomorphic Pedersen</h2>
+      <section class="exhibit" aria-labelledby="exhibit-4-heading">
+        <h2 id="exhibit-4-heading">Exhibit 4 — Homomorphic Pedersen</h2>
         <p>
           Verify C(m1,r1)+C(m2,r2)=C(m1+m2,r1+r2) on P-256 with real point arithmetic. This underpins MPC tallies,
           range proofs, and many ZKP constructions.
         </p>
         <div class="controls-grid">
-          <label>m1
-            <input id="e4-m1" type="number" value="12" min="0" />
-          </label>
-          <label>m2
-            <input id="e4-m2" type="number" value="31" min="0" />
-          </label>
+          <label for="e4-m1">m1</label>
+          <input id="e4-m1" type="number" value="12" min="0" />
+          <label for="e4-m2">m2</label>
+          <input id="e4-m2" type="number" value="31" min="0" />
         </div>
         <div class="button-row">
           <button id="e4-commit-open" type="button">Commit and open one value</button>
           <button id="e4-homomorphic" type="button">Verify homomorphic addition</button>
         </div>
-        <p class="mono">${escapeHtml(state.pedersenResult)}</p>
-        <p class="mono">${escapeHtml(state.pedersenHomomorphicResult)}</p>
+        <p class="mono" aria-live="polite">${escapeHtml(state.pedersenResult)}</p>
+        <p class="mono" aria-live="polite">${escapeHtml(state.pedersenHomomorphicResult)}</p>
       </section>
 
-      <section class="exhibit">
-        <h2>Exhibit 5 — Sealed Bid Auction</h2>
+      <section class="exhibit" aria-labelledby="exhibit-5-heading">
+        <h2 id="exhibit-5-heading">Exhibit 5 — Sealed Bid Auction</h2>
         <p>All bidders commit first, then reveal. No one can change bids after seeing others.</p>
         <div class="controls-grid">
-          <label>Alice bid
-            <input id="e5-bid-alice" type="number" value="23" min="0" />
-          </label>
-          <label>Bob bid
-            <input id="e5-bid-bob" type="number" value="31" min="0" />
-          </label>
-          <label>Carol bid
-            <input id="e5-bid-carol" type="number" value="28" min="0" />
-          </label>
+          <label for="e5-bid-alice">Alice bid</label>
+          <input id="e5-bid-alice" type="number" value="23" min="0" />
+          <label for="e5-bid-bob">Bob bid</label>
+          <input id="e5-bid-bob" type="number" value="31" min="0" />
+          <label for="e5-bid-carol">Carol bid</label>
+          <input id="e5-bid-carol" type="number" value="28" min="0" />
         </div>
         <div class="button-row">
           <button id="e5-commit" type="button">Publish commitments</button>
           <button id="e5-reveal" type="button">Reveal bids</button>
         </div>
-        <div class="table-wrap">
+        <div class="table-wrap" role="region" aria-label="Auction results" tabindex="0">
           <table>
-            <thead><tr><th>Bidder</th><th>Commitment</th><th>Bid</th></tr></thead>
+            <caption class="sr-only">Sealed bid auction commitments and results</caption>
+            <thead><tr><th scope="col">Bidder</th><th scope="col">Commitment</th><th scope="col">Bid</th></tr></thead>
             <tbody>
               ${
                 state.auctionCommitted.length
@@ -228,7 +222,7 @@ const render = (): void => {
             </tbody>
           </table>
         </div>
-        <p class="mono">
+        <p class="mono" aria-live="polite">
           ${
             state.auctionRevealed && state.auctionCommitted.length
               ? `Winner: ${state.auctionCommitted.reduce((a, b) => (a.bid >= b.bid ? a : b)).bidder}`
@@ -237,10 +231,10 @@ const render = (): void => {
         </p>
       </section>
 
-      <section class="exhibit">
-        <h2>Exhibit 6 — Where Commitments Appear</h2>
+      <section class="exhibit" aria-labelledby="exhibit-6-heading">
+        <h2 id="exhibit-6-heading">Exhibit 6 — Where Commitments Appear</h2>
         <p>Commitment schemes appear across the crypto-lab portfolio.</p>
-        <div class="map-grid">
+        <nav class="map-grid" aria-label="Related crypto labs">
           <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-vss-gate/" target="_blank" rel="noreferrer">
             <h3>VSS Gate</h3><p>Feldman/Pedersen commitments for share verification.</p>
           </a>
@@ -256,7 +250,7 @@ const render = (): void => {
           <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noreferrer">
             <h3>SNARK Arena</h3><p>Polynomial commitments in succinct proofs.</p>
           </a>
-        </div>
+        </nav>
       </section>
     </main>
   `;
