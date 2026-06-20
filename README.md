@@ -14,7 +14,7 @@ crypto-lab-commit-gate is a browser demo of two commitment primitives implemente
 ## Live Demo
 https://systemslibrarian.github.io/crypto-lab-commit-gate/
 
-The demo provides explicit controls for commit/open workflow, binding and hiding property demos, homomorphic Pedersen addition, sealed bid auction simulator, and a cross-demo map. Users can publish commitments, open values, run collision attempts, run indistinguishability statistics, and verify auction openings in-browser. Each exhibit is interactive and updates directly from runtime cryptographic computations.
+The demo opens with a plain-language primer (the commit→open→verify lifecycle plus the binding and hiding properties) and a symbol legend, then walks through six interactive exhibits. Each exhibit shows its governing equation, runs real in-browser cryptography, and reports an interpreted verdict — a plain-English headline explaining what just happened and why it matters — alongside the raw values. The commit/open exhibit lets you **reveal a different message than you sealed and watch verification reject it**, making the binding property tangible; the hiding exhibit contrasts a properly blinded commitment against a broken unblinded one that falls to a live dictionary attack. The Pedersen exhibit adds two commitments without opening them and verifies the sum opens correctly, and the sealed-bid auction shows commit-then-reveal removing any last-look advantage. The commitment primitives are covered by a vitest suite that runs in CI.
 
 ## What Can Go Wrong
 - Reusing or exposing the blinding factor r breaks hiding, because anyone with r can recompute and test candidate messages.

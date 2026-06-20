@@ -6,10 +6,17 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test": "vitest run",
+    "verify:ui": "node scripts/verify-ui.mjs",
+    "verify:a11y": "node scripts/verify-a11y.mjs"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.11.3",
+    "axe-core": "^4.12.1",
+    "playwright": "^1.61.0",
     "typescript": "^5.9.3",
-    "vite": "^7.1.10"
+    "vite": "^7.1.10",
+    "vitest": "^2.1.9"
   }
 }

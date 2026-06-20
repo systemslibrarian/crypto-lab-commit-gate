@@ -21,12 +21,42 @@ if (!app) {
   throw new Error('Missing #app root');
 }
 
+/* A single persistent live region. Because #app's innerHTML is fully
+ * replaced on every action, any aria-live node inside it is destroyed and
+ * recreated — which screen readers do NOT reliably announce. This element
+ * lives outside #app and survives every re-render, so updating its text
+ * announces results dependably. */
+const announcer = document.createElement('div');
+announcer.className = 'sr-only';
+announcer.setAttribute('role', 'status');
+announcer.setAttribute('aria-live', 'polite');
+document.body.appendChild(announcer);
+
+const announce = (message: string): void => {
+  // Clearing first guarantees the change is observed even if the text repeats.
+  announcer.textContent = '';
+  announcer.textContent = message;
+};
+
+/* ------------------------------------------------------------------ *
+ *  Verdict model — every interactive result is interpreted, not dumped.
+ *  A learner should read a plain-English headline and a "why it matters"
+ *  detail, with the raw cryptographic values available underneath.
+ * ------------------------------------------------------------------ */
+type VerdictKind = 'ok' | 'fail' | 'info' | 'pending';
+
+type Verdict = {
+  kind: VerdictKind;
+  headline: string;
+  detail?: string;
+  rows?: Array<[label: string, value: string]>;
+};
+
 type HashOpenState = {
   message: string;
   blindingHex: string;
   commitmentHex: string;
   opened: boolean;
-  verified: boolean;
 };
 
 type AuctionEntry = {
@@ -38,30 +68,34 @@ type AuctionEntry = {
 
 type State = {
   hashOpen: HashOpenState | null;
-  bindingText: string;
+  e1Verdict: Verdict;
+  e2Verdict: Verdict;
+  e3Hiding: Verdict;
+  hidingViz: { zero: number; one: number } | null;
+  e3Broken: Verdict;
   brokenCommitHex: string;
-  dictionaryResult: string;
-  hidingResult: string;
-  hidingCommit0: string;
-  hidingCommit1: string;
-  pedersenResult: string;
-  pedersenHomomorphicResult: string;
+  e4Open: Verdict;
+  e4Homomorphic: Verdict;
   auctionCommitted: AuctionEntry[];
   auctionRevealed: boolean;
+  auctionVerdict: Verdict;
 };
+
+const pending = (headline: string): Verdict => ({ kind: 'pending', headline });
 
 const state: State = {
   hashOpen: null,
-  bindingText: 'Run the binding test to attempt a second opening for the same commitment.',
+  e1Verdict: pending('Commit a value to begin. A fresh blinding factor r is generated for you.'),
+  e2Verdict: pending('Run the search to attempt a binding break.'),
+  e3Hiding: pending('Run the indistinguishability test.'),
+  hidingViz: null,
+  e3Broken: pending('Build an unblinded commitment, then run the dictionary attack on it.'),
   brokenCommitHex: '',
-  dictionaryResult: 'Generate a broken commitment, then run dictionary attack.',
-  hidingResult: 'Run statistical check to compare commitments to 0 and 1.',
-  hidingCommit0: '',
-  hidingCommit1: '',
-  pedersenResult: 'Create Pedersen commitments to open and verify.',
-  pedersenHomomorphicResult: 'Commit two values and verify homomorphic sum opening.',
+  e4Open: pending('Commit a value, then open it to verify.'),
+  e4Homomorphic: pending('Commit two values and check the homomorphic sum.'),
   auctionCommitted: [],
-  auctionRevealed: false
+  auctionRevealed: false,
+  auctionVerdict: pending('All bidders commit first; no one can change a bid after seeing the others.')
 };
 
 const escapeHtml = (unsafe: string): string =>
@@ -71,6 +105,289 @@ const escapeHtml = (unsafe: string): string =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
+
+const hexToBytes = (hex: string): Uint8Array =>
+  new Uint8Array(hex.match(/.{1,2}/g)?.map((x) => Number.parseInt(x, 16)) ?? []);
+
+const truncate = (value: string, head = 32): string =>
+  value.length > head ? `${value.slice(0, head)}…` : value;
+
+const ICONS: Record<VerdictKind, string> = {
+  ok: '✓',
+  fail: '✕',
+  info: 'ℹ',
+  pending: '·'
+};
+
+const renderVerdict = (verdict: Verdict): string => {
+  const rows = verdict.rows?.length
+    ? `<dl class="verdict-rows">${verdict.rows
+        .map(
+          ([label, value]) =>
+            `<div><dt>${escapeHtml(label)}</dt><dd class="mono">${escapeHtml(value)}</dd></div>`
+        )
+        .join('')}</dl>`
+    : '';
+  const detail = verdict.detail ? `<p class="verdict-detail">${escapeHtml(verdict.detail)}</p>` : '';
+  // No aria-live here: this node is recreated on every render, which screen
+  // readers don't reliably announce. The persistent `announcer` does that job.
+  return `
+    <div class="verdict" data-kind="${verdict.kind}">
+      <p class="verdict-head"><span class="verdict-icon" aria-hidden="true">${ICONS[verdict.kind]}</span>${escapeHtml(verdict.headline)}</p>
+      ${detail}
+      ${rows}
+    </div>
+  `;
+};
+
+const renderBiasViz = (viz: { zero: number; one: number } | null): string => {
+  if (!viz) {
+    return '';
+  }
+  const bar = (label: string, fraction: number): string => {
+    const pct = (fraction * 100).toFixed(1);
+    return `
+      <div class="bias-row">
+        <span class="bias-label">P(last bit = 1 | m=${escapeHtml(label)})</span>
+        <span class="bias-track"><span class="bias-fill" style="width:${pct}%"></span></span>
+        <span class="bias-value mono">${pct}%</span>
+      </div>`;
+  };
+  return `
+    <figure class="bias-viz" aria-label="Last-bit frequency for commitments to 0 versus 1">
+      ${bar('0', viz.zero)}
+      ${bar('1', viz.one)}
+      <figcaption>Equal-height bars mean an observer learns nothing about the committed value.</figcaption>
+    </figure>`;
+};
+
+const render = (announceText?: string): void => {
+  // Preserve keyboard focus across the full innerHTML replacement: capture the
+  // focused control's id beforehand and restore it afterward.
+  const activeId = document.activeElement instanceof HTMLElement ? document.activeElement.id : '';
+  app.innerHTML = `
+    <main class="shell" id="main-content">
+      <header class="hero">
+        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
+        <p class="eyebrow">systemslibrarian · crypto-lab</p>
+        <h1>crypto-lab-commit-gate</h1>
+        <p>
+          A commitment lets you <strong>lock a value now</strong> and <strong>reveal it later</strong> —
+          like sealing a number in an envelope and handing it over. This lab builds two kinds in real,
+          live cryptography and lets you try to cheat each one.
+        </p>
+
+        <div class="primer">
+          <div class="primer-flow" aria-label="Commitment lifecycle">
+            <span class="flow-step"><span class="flow-num">1</span> Commit <code>C = f(m, r)</code></span>
+            <span class="flow-arrow" aria-hidden="true">→</span>
+            <span class="flow-step"><span class="flow-num">2</span> Publish <code>C</code></span>
+            <span class="flow-arrow" aria-hidden="true">→</span>
+            <span class="flow-step"><span class="flow-num">3</span> Open <code>(m, r)</code></span>
+            <span class="flow-arrow" aria-hidden="true">→</span>
+            <span class="flow-step"><span class="flow-num">4</span> Verify</span>
+          </div>
+          <div class="primer-props">
+            <p><strong>Binding</strong> — once committed, you cannot open <code>C</code> to a different value than the one you sealed.</p>
+            <p><strong>Hiding</strong> — before you open, <code>C</code> leaks nothing about the value inside.</p>
+          </div>
+          <dl class="legend">
+            <div><dt class="mono">m</dt><dd>the message you commit to</dd></div>
+            <div><dt class="mono">r</dt><dd>random blinding factor (the secret salt)</dd></div>
+            <div><dt class="mono">C</dt><dd>the published commitment</dd></div>
+            <div><dt class="mono">G, H</dt><dd>independent curve generators (Pedersen)</dd></div>
+          </dl>
+        </div>
+      </header>
+
+      <section class="exhibit" aria-labelledby="exhibit-1-heading">
+        <h2 id="exhibit-1-heading">Exhibit 1 — Commit, Open, and Try to Cheat</h2>
+        <p>
+          Alice seals a value for Bob with <code>C = SHA-256(r ‖ m)</code>, publishes <code>C</code>, then later
+          reveals <code>(m, r)</code>. Bob re-hashes and checks. <strong>Try opening to a different message</strong>
+          than you committed — watch Bob reject it. That rejection <em>is</em> the binding property.
+        </p>
+        <p class="equation">C = SHA-256( r ‖ m )</p>
+        <div class="controls-grid">
+          <label for="e1-message">Message to commit (m)
+            <input id="e1-message" type="text" value="42" />
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="e1-commit" type="button">1. Commit &amp; publish</button>
+        </div>
+        <div class="envelope ${state.hashOpen?.opened ? 'opened' : 'sealed'}">
+          <div class="envelope-row"><span class="env-label">Committer</span><span>Alice</span></div>
+          <div class="envelope-row"><span class="env-label">Published C</span><span class="mono">${state.hashOpen ? escapeHtml(truncate(state.hashOpen.commitmentHex, 40)) : 'nothing sealed yet'}</span></div>
+          <div class="envelope-row"><span class="env-label">Verifier</span><span>Bob</span></div>
+        </div>
+        ${
+          state.hashOpen
+            ? `
+          <div class="controls-grid open-grid">
+            <label for="e1-reveal">Message Alice reveals at open time
+              <input id="e1-reveal" type="text" value="${escapeHtml(state.hashOpen.message)}" />
+            </label>
+          </div>
+          <p class="hint">The blinding factor <code>r</code> is fixed at commit time and revealed as-is. Change the message above to attempt a cheat.</p>
+          <div class="button-row">
+            <button id="e1-open" type="button">2. Open &amp; verify</button>
+          </div>`
+            : ''
+        }
+        ${renderVerdict(state.e1Verdict)}
+      </section>
+
+      <section class="exhibit" aria-labelledby="exhibit-2-heading">
+        <h2 id="exhibit-2-heading">Exhibit 2 — Binding, Quantified</h2>
+        <p>
+          To break binding you would need two different messages that produce the <em>same</em> commitment.
+          We fix one commitment and brute-force thousands of random alternatives looking for a collision.
+          You will not find one — and the counter shows why.
+        </p>
+        <p class="equation">find m′ ≠ m such that SHA-256(r ‖ m′) = SHA-256(r ‖ m)</p>
+        <div class="button-row">
+          <button id="e2-binding" type="button">Search for a collision (3,000 tries)</button>
+        </div>
+        ${renderVerdict(state.e2Verdict)}
+      </section>
+
+      <section class="exhibit" aria-labelledby="exhibit-3-heading">
+        <h2 id="exhibit-3-heading">Exhibit 3 — Hiding (and How It Breaks)</h2>
+        <p>
+          A good commitment reveals nothing before opening. Two commitments to different values should look
+          statistically identical. Below: commit to <code>0</code> and <code>1</code> many times and measure
+          whether an observer could tell them apart.
+        </p>
+        <p class="equation">C(0) ≈ᵈ C(1) &nbsp;—&nbsp; indistinguishable to any observer</p>
+        <div class="button-row">
+          <button id="e3-run" type="button">Run indistinguishability test</button>
+        </div>
+        ${renderBiasViz(state.hidingViz)}
+        ${renderVerdict(state.e3Hiding)}
+
+        <hr class="exhibit-divider" />
+        <h3>What happens if you drop <code>r</code>?</h3>
+        <p>
+          Without a blinding factor the commitment is just <code>SHA-256(m)</code> — deterministic. If the set of
+          possible messages is small, an attacker simply hashes every candidate and matches. This is why
+          <strong>unblinded hash commitments are not hiding</strong>.
+        </p>
+        <p class="equation equation-danger">C = SHA-256( m ) &nbsp;←&nbsp; no r, no hiding</p>
+        <div class="controls-grid">
+          <label for="e3-broken-message">Secret value (try a common word)
+            <input id="e3-broken-message" type="text" value="yes" />
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="e3-broken-commit" type="button">Commit without blinding</button>
+          <button id="e3-dictionary" type="button">Run dictionary attack</button>
+        </div>
+        ${renderVerdict(state.e3Broken)}
+      </section>
+
+      <section class="exhibit" aria-labelledby="exhibit-4-heading">
+        <h2 id="exhibit-4-heading">Exhibit 4 — Pedersen &amp; the Homomorphic Superpower</h2>
+        <p>
+          Pedersen commitments live on the P-256 curve: <code>C = r·G + m·H</code> (real point arithmetic, computed
+          live). Their magic: you can <strong>add commitments without opening them</strong>, and the sum opens to the
+          sum of the values. This underpins private tallies, MPC, and range proofs.
+        </p>
+        <p class="equation">C(m₁,r₁) + C(m₂,r₂) = C(m₁+m₂, r₁+r₂)</p>
+        <div class="controls-grid">
+          <label for="e4-m1">m₁
+            <input id="e4-m1" type="number" value="12" min="0" />
+          </label>
+          <label for="e4-m2">m₂
+            <input id="e4-m2" type="number" value="31" min="0" />
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="e4-commit-open" type="button">Commit &amp; open m₁</button>
+          <button id="e4-homomorphic" type="button">Add commitments &amp; verify</button>
+        </div>
+        ${renderVerdict(state.e4Open)}
+        ${renderVerdict(state.e4Homomorphic)}
+      </section>
+
+      <section class="exhibit" aria-labelledby="exhibit-5-heading">
+        <h2 id="exhibit-5-heading">Exhibit 5 — Sealed-Bid Auction</h2>
+        <p>
+          Commitments make fair auctions possible. Every bidder publishes a commitment <em>first</em>; only then does
+          everyone reveal. Because of binding, no one can lower or raise their bid after seeing the others.
+        </p>
+        <div class="controls-grid">
+          <label for="e5-bid-alice">Alice bid
+            <input id="e5-bid-alice" type="number" value="23" min="0" />
+          </label>
+          <label for="e5-bid-bob">Bob bid
+            <input id="e5-bid-bob" type="number" value="31" min="0" />
+          </label>
+          <label for="e5-bid-carol">Carol bid
+            <input id="e5-bid-carol" type="number" value="28" min="0" />
+          </label>
+        </div>
+        <div class="button-row">
+          <button id="e5-commit" type="button">1. Publish commitments</button>
+          <button id="e5-reveal" type="button">2. Reveal &amp; verify</button>
+        </div>
+        <div class="table-wrap" role="region" aria-label="Auction results" tabindex="0">
+          <table>
+            <caption class="sr-only">Sealed bid auction commitments and results</caption>
+            <thead><tr><th scope="col">Bidder</th><th scope="col">Commitment</th><th scope="col">Bid</th></tr></thead>
+            <tbody>
+              ${
+                state.auctionCommitted.length
+                  ? state.auctionCommitted
+                      .map(
+                        (entry) =>
+                          `<tr><td>${escapeHtml(entry.bidder)}</td><td class="mono">${escapeHtml(truncate(entry.commitmentHex, 24))}</td><td>${
+                            state.auctionRevealed ? entry.bid : '🔒 sealed'
+                          }</td></tr>`
+                      )
+                      .join('')
+                  : '<tr><td colspan="3">No commitments published yet.</td></tr>'
+              }
+            </tbody>
+          </table>
+        </div>
+        ${renderVerdict(state.auctionVerdict)}
+      </section>
+
+      <section class="exhibit" aria-labelledby="exhibit-6-heading">
+        <h2 id="exhibit-6-heading">Exhibit 6 — Where Commitments Appear</h2>
+        <p>The same two primitives you just used show up across the crypto-lab portfolio.</p>
+        <nav class="map-grid" aria-label="Related crypto labs">
+          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-vss-gate/" target="_blank" rel="noreferrer">
+            <h3>VSS Gate</h3><p>Feldman/Pedersen commitments for share verification.</p>
+          </a>
+          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-frost-threshold/" target="_blank" rel="noreferrer">
+            <h3>FROST Threshold</h3><p>Nonce commitments in threshold signing rounds.</p>
+          </a>
+          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-zk-proof-lab/" target="_blank" rel="noreferrer">
+            <h3>ZK Proof Lab</h3><p>Fiat-Shamir uses commitment-style transcript binding.</p>
+          </a>
+          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-garbled-gate/" target="_blank" rel="noreferrer">
+            <h3>Garbled Gate</h3><p>Oblivious transfer commitments for input consistency.</p>
+          </a>
+          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noreferrer">
+            <h3>SNARK Arena</h3><p>Polynomial commitments in succinct proofs.</p>
+          </a>
+        </nav>
+      </section>
+    </main>
+  `;
+
+  initThemeToggle();
+  bindEvents();
+
+  if (activeId) {
+    document.getElementById(activeId)?.focus();
+  }
+  if (announceText) {
+    announce(announceText);
+  }
+};
 
 const initThemeToggle = (): void => {
   const root = document.documentElement;
@@ -96,270 +413,194 @@ const initThemeToggle = (): void => {
   applyState();
 };
 
-const render = (): void => {
-  app.innerHTML = `
-    <main class="shell" id="main-content">
-      <header class="hero">
-        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
-        <p class="eyebrow">systemslibrarian · crypto-lab</p>
-        <h1>crypto-lab-commit-gate</h1>
-        <p>
-          Interactive commitment scheme lab covering hash commitments, Pedersen commitments, binding and hiding,
-          and protocol patterns in auctions, ZK proofs, MPC, and VSS.
-        </p>
-      </header>
-
-      <section class="exhibit" aria-labelledby="exhibit-1-heading">
-        <h2 id="exhibit-1-heading">Exhibit 1 — Commit and Open</h2>
-        <p>Committer Alice seals a value for Verifier Bob, then later opens with message + blinding factor.</p>
-        <div class="controls-grid">
-          <label for="e1-message">Message
-            <input id="e1-message" type="text" value="42" />
-          </label>
-        </div>
-        <div class="button-row">
-          <button id="e1-commit" type="button">Commit</button>
-          <button id="e1-open" type="button">Open</button>
-        </div>
-        <div class="envelope ${state.hashOpen?.opened ? 'opened' : 'sealed'}" role="status">
-          <div><strong>Committer:</strong> Alice</div>
-          <div><strong>Commitment:</strong> <span class="mono">${state.hashOpen ? escapeHtml(state.hashOpen.commitmentHex) : 'none yet'}</span></div>
-          <div><strong>Verifier:</strong> Bob</div>
-        </div>
-        <p class="mono" aria-live="polite">
-          ${
-            state.hashOpen
-              ? `r=${escapeHtml(state.hashOpen.blindingHex)} | verify=${state.hashOpen.verified ? 'pass' : 'pending/fail'}`
-              : 'Create commitment to begin.'
-          }
-        </p>
-      </section>
-
-      <section class="exhibit" aria-labelledby="exhibit-2-heading">
-        <h2 id="exhibit-2-heading">Exhibit 2 — Binding Property</h2>
-        <p>Try to open one commitment to two different messages, then compare with broken no-blinding commitments.</p>
-        <div class="button-row">
-          <button id="e2-binding" type="button">Attempt collision search</button>
-        </div>
-        <p class="mono" aria-live="polite">${escapeHtml(state.bindingText)}</p>
-        <div class="controls-grid">
-          <label for="e2-broken-message">Broken commitment message
-            <input id="e2-broken-message" type="text" value="yes" />
-          </label>
-        </div>
-        <div class="button-row">
-          <button id="e2-broken-commit" type="button">Commit without blinding</button>
-          <button id="e2-dictionary" type="button">Run dictionary attack</button>
-        </div>
-        <p class="mono" aria-live="polite">Broken commitment: ${escapeHtml(state.brokenCommitHex || 'none')}</p>
-        <p class="mono" aria-live="polite">${escapeHtml(state.dictionaryResult)}</p>
-      </section>
-
-      <section class="exhibit" aria-labelledby="exhibit-3-heading">
-        <h2 id="exhibit-3-heading">Exhibit 3 — Hiding Property</h2>
-        <p>
-          Hash commitments are computationally hiding, while Pedersen commitments are perfectly hiding (information-theoretic)
-          under standard assumptions.
-        </p>
-        <div class="button-row">
-          <button id="e3-run" type="button">Run indistinguishability stats</button>
-        </div>
-        <p class="mono" aria-live="polite">C(0): ${escapeHtml(state.hidingCommit0 || 'not generated')}</p>
-        <p class="mono" aria-live="polite">C(1): ${escapeHtml(state.hidingCommit1 || 'not generated')}</p>
-        <p class="mono" aria-live="polite">${escapeHtml(state.hidingResult)}</p>
-      </section>
-
-      <section class="exhibit" aria-labelledby="exhibit-4-heading">
-        <h2 id="exhibit-4-heading">Exhibit 4 — Homomorphic Pedersen</h2>
-        <p>
-          Verify C(m1,r1)+C(m2,r2)=C(m1+m2,r1+r2) on P-256 with real point arithmetic. This underpins MPC tallies,
-          range proofs, and many ZKP constructions.
-        </p>
-        <div class="controls-grid">
-          <label for="e4-m1">m1
-            <input id="e4-m1" type="number" value="12" min="0" />
-          </label>
-          <label for="e4-m2">m2
-            <input id="e4-m2" type="number" value="31" min="0" />
-          </label>
-        </div>
-        <div class="button-row">
-          <button id="e4-commit-open" type="button">Commit and open one value</button>
-          <button id="e4-homomorphic" type="button">Verify homomorphic addition</button>
-        </div>
-        <p class="mono" aria-live="polite">${escapeHtml(state.pedersenResult)}</p>
-        <p class="mono" aria-live="polite">${escapeHtml(state.pedersenHomomorphicResult)}</p>
-      </section>
-
-      <section class="exhibit" aria-labelledby="exhibit-5-heading">
-        <h2 id="exhibit-5-heading">Exhibit 5 — Sealed Bid Auction</h2>
-        <p>All bidders commit first, then reveal. No one can change bids after seeing others.</p>
-        <div class="controls-grid">
-          <label for="e5-bid-alice">Alice bid
-            <input id="e5-bid-alice" type="number" value="23" min="0" />
-          </label>
-          <label for="e5-bid-bob">Bob bid
-            <input id="e5-bid-bob" type="number" value="31" min="0" />
-          </label>
-          <label for="e5-bid-carol">Carol bid
-            <input id="e5-bid-carol" type="number" value="28" min="0" />
-          </label>
-        </div>
-        <div class="button-row">
-          <button id="e5-commit" type="button">Publish commitments</button>
-          <button id="e5-reveal" type="button">Reveal bids</button>
-        </div>
-        <div class="table-wrap" role="region" aria-label="Auction results" tabindex="0">
-          <table>
-            <caption class="sr-only">Sealed bid auction commitments and results</caption>
-            <thead><tr><th scope="col">Bidder</th><th scope="col">Commitment</th><th scope="col">Bid</th></tr></thead>
-            <tbody>
-              ${
-                state.auctionCommitted.length
-                  ? state.auctionCommitted
-                      .map(
-                        (entry) =>
-                          `<tr><td>${escapeHtml(entry.bidder)}</td><td class="mono">${escapeHtml(entry.commitmentHex)}</td><td>${
-                            state.auctionRevealed ? entry.bid : 'sealed'
-                          }</td></tr>`
-                      )
-                      .join('')
-                  : '<tr><td colspan="3">No commitments published yet.</td></tr>'
-              }
-            </tbody>
-          </table>
-        </div>
-        <p class="mono" aria-live="polite">
-          ${
-            state.auctionRevealed && state.auctionCommitted.length
-              ? `Winner: ${state.auctionCommitted.reduce((a, b) => (a.bid >= b.bid ? a : b)).bidder}`
-              : 'Commitments published simultaneously before reveal phase.'
-          }
-        </p>
-      </section>
-
-      <section class="exhibit" aria-labelledby="exhibit-6-heading">
-        <h2 id="exhibit-6-heading">Exhibit 6 — Where Commitments Appear</h2>
-        <p>Commitment schemes appear across the crypto-lab portfolio.</p>
-        <nav class="map-grid" aria-label="Related crypto labs">
-          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-vss-gate/" target="_blank" rel="noreferrer">
-            <h3>VSS Gate</h3><p>Feldman/Pedersen commitments for share verification.</p>
-          </a>
-          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-frost-threshold/" target="_blank" rel="noreferrer">
-            <h3>FROST Threshold</h3><p>Nonce commitments in threshold signing rounds.</p>
-          </a>
-          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-zk-proof-lab/" target="_blank" rel="noreferrer">
-            <h3>ZK Proof Lab</h3><p>Fiat-Shamir uses commitment-style transcript binding.</p>
-          </a>
-          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-garbled-gate/" target="_blank" rel="noreferrer">
-            <h3>Garbled Gate</h3><p>Oblivious transfer commitments for input consistency.</p>
-          </a>
-          <a class="map-card" href="https://systemslibrarian.github.io/crypto-lab-snark-arena/" target="_blank" rel="noreferrer">
-            <h3>SNARK Arena</h3><p>Polynomial commitments in succinct proofs.</p>
-          </a>
-        </nav>
-      </section>
-    </main>
-  `;
-
-  initThemeToggle();
-  bindEvents();
-};
-
 const bindEvents = (): void => {
-  const e1Commit = document.querySelector<HTMLButtonElement>('#e1-commit');
-  const e1Open = document.querySelector<HTMLButtonElement>('#e1-open');
-  const e1Message = document.querySelector<HTMLInputElement>('#e1-message');
-
-  e1Commit?.addEventListener('click', async () => {
-    const message = e1Message?.value ?? '';
+  /* --- Exhibit 1: commit / open / cheat --- */
+  document.querySelector<HTMLButtonElement>('#e1-commit')?.addEventListener('click', async () => {
+    const message = document.querySelector<HTMLInputElement>('#e1-message')?.value ?? '';
     const r = randomBlindingFactor();
     const commitment = await commitHash(message, r);
     state.hashOpen = {
       message,
       blindingHex: bytesToHex(r),
       commitmentHex: bytesToHex(commitment),
-      opened: false,
-      verified: false
+      opened: false
     };
-    render();
+    state.e1Verdict = {
+      kind: 'info',
+      headline: 'Sealed. Commitment published to Bob.',
+      detail: 'Bob now holds C but learns nothing about m. Open honestly to verify — or change the revealed message to try to cheat.',
+      rows: [
+        ['Committed m', message],
+        ['Blinding r', truncate(state.hashOpen.blindingHex, 40)],
+        ['Published C', truncate(state.hashOpen.commitmentHex, 40)]
+      ]
+    };
+    render(state.e1Verdict.headline);
   });
 
-  e1Open?.addEventListener('click', async () => {
+  document.querySelector<HTMLButtonElement>('#e1-open')?.addEventListener('click', async () => {
     if (!state.hashOpen) {
       return;
     }
-    const verified = await verifyHashOpening(
-      state.hashOpen.message,
-      new Uint8Array(state.hashOpen.blindingHex.match(/.{1,2}/g)?.map((x) => Number.parseInt(x, 16)) ?? []),
-      new Uint8Array(state.hashOpen.commitmentHex.match(/.{1,2}/g)?.map((x) => Number.parseInt(x, 16)) ?? [])
-    );
-    state.hashOpen = { ...state.hashOpen, opened: true, verified };
-    render();
+    const revealed = document.querySelector<HTMLInputElement>('#e1-reveal')?.value ?? '';
+    const r = hexToBytes(state.hashOpen.blindingHex);
+    const verified = await verifyHashOpening(revealed, r, hexToBytes(state.hashOpen.commitmentHex));
+    const tampered = revealed !== state.hashOpen.message;
+
+    state.hashOpen = { ...state.hashOpen, opened: true };
+    state.e1Verdict = verified
+      ? {
+          kind: 'ok',
+          headline: 'Bob accepts the opening.',
+          detail: 'SHA-256(r ‖ revealed message) equals the published C. The revealed value is provably the one Alice sealed.',
+          rows: [
+            ['Revealed m', revealed],
+            ['Recomputed C', truncate(state.hashOpen.commitmentHex, 40)]
+          ]
+        }
+      : {
+          kind: 'fail',
+          headline: tampered ? 'Bob rejects — cheating detected.' : 'Bob rejects the opening.',
+          detail: tampered
+            ? `You committed "${state.hashOpen.message}" but tried to open "${revealed}". A different message hashes to a different C, so verification fails. This is binding in action: Alice is locked to her original value.`
+            : 'The recomputed commitment does not match C.',
+          rows: [
+            ['Committed m', state.hashOpen.message],
+            ['Tried to reveal', revealed]
+          ]
+        };
+    render(state.e1Verdict.headline);
   });
 
-  const e2Binding = document.querySelector<HTMLButtonElement>('#e2-binding');
-  e2Binding?.addEventListener('click', async () => {
+  /* --- Exhibit 2: binding --- */
+  document.querySelector<HTMLButtonElement>('#e2-binding')?.addEventListener('click', async () => {
+    state.e2Verdict = { kind: 'pending', headline: 'Searching for a collision…' };
+    render(state.e2Verdict.headline);
     const run = await runBindingAttempt('commit-me', 3000);
-    state.bindingText = `trials=${run.tries}, collisionFound=${run.foundCollision}, commitment=${run.originalCommitmentHex.slice(0, 24)}...`;
-    render();
+    state.e2Verdict = {
+      kind: run.foundCollision ? 'fail' : 'ok',
+      headline: run.foundCollision
+        ? 'Collision found — binding broken!'
+        : `No collision in ${run.tries.toLocaleString()} tries. Binding holds.`,
+      detail: run.foundCollision
+        ? 'A second message produced the same commitment.'
+        : 'A genuine break needs a SHA-256 collision: expected work ≈ 2¹²⁸ operations. At a billion tries per second that is far longer than the age of the universe — so binding is computationally guaranteed.',
+      rows: [
+        ['Fixed commitment', truncate(run.originalCommitmentHex, 40)],
+        ['Random messages tried', run.tries.toLocaleString()],
+        ['Collisions found', String(run.foundCollision ? 1 : 0)]
+      ]
+    };
+    render(state.e2Verdict.headline);
   });
 
-  const e2BrokenCommit = document.querySelector<HTMLButtonElement>('#e2-broken-commit');
-  e2BrokenCommit?.addEventListener('click', async () => {
-    const msg = document.querySelector<HTMLInputElement>('#e2-broken-message')?.value ?? 'yes';
-    const c = await brokenCommitNoBlinding(msg);
-    state.brokenCommitHex = bytesToHex(c);
-    state.dictionaryResult = 'Broken commitment generated. Attack ready.';
-    render();
-  });
-
-  const e2Dictionary = document.querySelector<HTMLButtonElement>('#e2-dictionary');
-  e2Dictionary?.addEventListener('click', async () => {
-    if (!state.brokenCommitHex) {
-      return;
-    }
-    const dict = ['no', 'yes', '0', '1', 'alice', 'bob', 'carol', '42'];
-    const recovered = await dictionaryAttackBrokenCommit(state.brokenCommitHex, dict);
-    state.dictionaryResult = recovered.recoveredMessage
-      ? `Recovered '${recovered.recoveredMessage}' in ${recovered.attempts} guesses.`
-      : `Not found in ${recovered.attempts} guesses.`;
-    render();
-  });
-
-  const e3Run = document.querySelector<HTMLButtonElement>('#e3-run');
-  e3Run?.addEventListener('click', async () => {
+  /* --- Exhibit 3: hiding + broken construction --- */
+  document.querySelector<HTMLButtonElement>('#e3-run')?.addEventListener('click', async () => {
+    state.e3Hiding = { kind: 'pending', headline: 'Sampling commitments…' };
+    render(state.e3Hiding.headline);
     const c0 = await commitHash('0', randomBlindingFactor());
     const c1 = await commitHash('1', randomBlindingFactor());
     const stats = await runHidingStats(512);
-    state.hidingCommit0 = bytesToHex(c0);
-    state.hidingCommit1 = bytesToHex(c1);
-    state.hidingResult = `samples=${stats.samples}, P(lsb=1|m=0)=${stats.bit1BiasZero.toFixed(3)}, P(lsb=1|m=1)=${stats.bit1BiasOne.toFixed(3)}, |delta|=${stats.absBiasDelta.toFixed(3)}`;
-    render();
+    state.hidingViz = { zero: stats.bit1BiasZero, one: stats.bit1BiasOne };
+    const indistinguishable = stats.absBiasDelta < 0.1;
+    state.e3Hiding = {
+      kind: indistinguishable ? 'ok' : 'info',
+      headline: indistinguishable
+        ? 'Indistinguishable — an observer cannot tell 0 from 1.'
+        : 'Sampling noise this run; rerun for a tighter result.',
+      detail: `Across ${stats.samples} fresh commitments each, the chance the last bit is 1 was ${(stats.bit1BiasZero * 100).toFixed(1)}% for m=0 and ${(stats.bit1BiasOne * 100).toFixed(1)}% for m=1. The gap of ${(stats.absBiasDelta * 100).toFixed(1)}% is statistical noise — the blinding factor r scrambles C so the value inside leaks nothing.`,
+      rows: [
+        ['A sample C(0)', truncate(bytesToHex(c0), 40)],
+        ['A sample C(1)', truncate(bytesToHex(c1), 40)],
+        ['Bias gap |Δ|', stats.absBiasDelta.toFixed(4)]
+      ]
+    };
+    render(state.e3Hiding.headline);
   });
 
-  const e4Open = document.querySelector<HTMLButtonElement>('#e4-commit-open');
-  e4Open?.addEventListener('click', async () => {
+  document.querySelector<HTMLButtonElement>('#e3-broken-commit')?.addEventListener('click', async () => {
+    const msg = document.querySelector<HTMLInputElement>('#e3-broken-message')?.value ?? 'yes';
+    const c = await brokenCommitNoBlinding(msg);
+    state.brokenCommitHex = bytesToHex(c);
+    state.e3Broken = {
+      kind: 'info',
+      headline: 'Unblinded commitment built — now attack it.',
+      detail: 'This is just SHA-256(message) with no secret salt. Run the dictionary attack to see how fast it falls.',
+      rows: [['C = SHA-256(m)', truncate(state.brokenCommitHex, 40)]]
+    };
+    render(state.e3Broken.headline);
+  });
+
+  document.querySelector<HTMLButtonElement>('#e3-dictionary')?.addEventListener('click', async () => {
+    if (!state.brokenCommitHex) {
+      state.e3Broken = { kind: 'info', headline: 'Build the unblinded commitment first.' };
+      render(state.e3Broken.headline);
+      return;
+    }
+    const dict = ['no', 'yes', '0', '1', 'true', 'false', 'alice', 'bob', 'carol', '42'];
+    const recovered = await dictionaryAttackBrokenCommit(state.brokenCommitHex, dict);
+    state.e3Broken = recovered.recoveredMessage
+      ? {
+          kind: 'fail',
+          headline: `Secret recovered: "${recovered.recoveredMessage}".`,
+          detail: `The attacker hashed candidates one by one and matched yours after ${recovered.attempts} guess${recovered.attempts === 1 ? '' : 'es'}. With no blinding factor, a small message space offers no hiding at all. A random r would have made this attack hopeless.`,
+          rows: [
+            ['Dictionary size', String(dict.length)],
+            ['Guesses to break', String(recovered.attempts)]
+          ]
+        }
+      : {
+          kind: 'info',
+          headline: 'Not in this dictionary — but still not hiding.',
+          detail: `Your value was not among the ${dict.length} common candidates, but the commitment is still deterministic: any attacker who guesses the right message space recovers it. Try a value like "yes" or "42".`
+        };
+    render(state.e3Broken.headline);
+  });
+
+  /* --- Exhibit 4: Pedersen --- */
+  document.querySelector<HTMLButtonElement>('#e4-commit-open')?.addEventListener('click', async () => {
     const m = BigInt(document.querySelector<HTMLInputElement>('#e4-m1')?.value ?? '0');
     const commit = await commitPedersen(m);
     const ok = await verifyPedersenOpening(commit);
-    state.pedersenResult = `C=${pointToHex(commit.commitment).slice(0, 70)}... verify=${ok}`;
-    render();
+    state.e4Open = {
+      kind: ok ? 'ok' : 'fail',
+      headline: ok ? `Opened m₁ = ${m} and the point checks out.` : 'Opening failed.',
+      detail: ok
+        ? 'Bob recomputes r·G + m·H from the revealed scalars and gets exactly the published point. The commitment is binding by the hardness of discrete log on P-256.'
+        : 'The recomputed curve point did not match.',
+      rows: [
+        ['Commitment C', truncate(pointToHex(commit.commitment), 56)],
+        ['Message scalar m', commit.messageScalar.toString()]
+      ]
+    };
+    render(state.e4Open.headline);
   });
 
-  const e4Homomorphic = document.querySelector<HTMLButtonElement>('#e4-homomorphic');
-  e4Homomorphic?.addEventListener('click', async () => {
+  document.querySelector<HTMLButtonElement>('#e4-homomorphic')?.addEventListener('click', async () => {
     const m1 = BigInt(document.querySelector<HTMLInputElement>('#e4-m1')?.value ?? '0');
     const m2 = BigInt(document.querySelector<HTMLInputElement>('#e4-m2')?.value ?? '0');
     const c1 = await commitPedersen(m1);
     const c2 = await commitPedersen(m2);
     const homo = await verifyHomomorphicProperty(c1, c2);
-    state.pedersenHomomorphicResult = `sumMessage=${homo.sumMessage.toString()} sumBlinding=${homo.sumBlinding.toString()} verified=${homo.ok}`;
-    render();
+    state.e4Homomorphic = {
+      kind: homo.ok ? 'ok' : 'fail',
+      headline: homo.ok
+        ? `Adding the two commitments opens to ${m1} + ${m2} = ${(m1 + m2).toString()}.`
+        : 'Homomorphic check failed.',
+      detail: homo.ok
+        ? 'The sum of the two commitment points equals a fresh commitment to the summed value and summed blinding — proven on the live curve. No value was ever opened to compute the total.'
+        : 'The point sum did not match a commitment to the summed values.',
+      rows: [
+        ['Sum of messages', homo.sumMessage.toString()],
+        ['C₁ + C₂ point', truncate(pointToHex(homo.left), 56)],
+        ['C(m₁+m₂) point', truncate(pointToHex(homo.right), 56)]
+      ]
+    };
+    render(state.e4Homomorphic.headline);
   });
 
-  const e5Commit = document.querySelector<HTMLButtonElement>('#e5-commit');
-  e5Commit?.addEventListener('click', async () => {
+  /* --- Exhibit 5: auction --- */
+  document.querySelector<HTMLButtonElement>('#e5-commit')?.addEventListener('click', async () => {
     const bids = [
       ['Alice', Number.parseInt(document.querySelector<HTMLInputElement>('#e5-bid-alice')?.value ?? '0', 10)],
       ['Bob', Number.parseInt(document.querySelector<HTMLInputElement>('#e5-bid-bob')?.value ?? '0', 10)],
@@ -374,28 +615,45 @@ const bindEvents = (): void => {
     }
     state.auctionCommitted = committed;
     state.auctionRevealed = false;
-    render();
+    state.auctionVerdict = {
+      kind: 'info',
+      headline: 'All three bids are sealed and published simultaneously.',
+      detail: 'Each bid is hidden behind its own commitment. No bidder can see another\'s number, and none can change their own. Reveal to verify and find the winner.'
+    };
+    render(state.auctionVerdict.headline);
   });
 
-  const e5Reveal = document.querySelector<HTMLButtonElement>('#e5-reveal');
-  e5Reveal?.addEventListener('click', async () => {
+  document.querySelector<HTMLButtonElement>('#e5-reveal')?.addEventListener('click', async () => {
     if (!state.auctionCommitted.length) {
+      state.auctionVerdict = { kind: 'info', headline: 'Publish commitments first.' };
+      render(state.auctionVerdict.headline);
       return;
     }
     for (const entry of state.auctionCommitted) {
       const ok = await verifyHashOpening(
         String(entry.bid),
-        new Uint8Array(entry.blindingHex.match(/.{1,2}/g)?.map((x) => Number.parseInt(x, 16)) ?? []),
-        new Uint8Array(entry.commitmentHex.match(/.{1,2}/g)?.map((x) => Number.parseInt(x, 16)) ?? [])
+        hexToBytes(entry.blindingHex),
+        hexToBytes(entry.commitmentHex)
       );
       if (!ok) {
         state.auctionRevealed = false;
-        render();
+        state.auctionVerdict = {
+          kind: 'fail',
+          headline: 'An opening did not verify.',
+          detail: `${entry.bidder}'s revealed bid does not match their commitment.`
+        };
+        render(state.auctionVerdict.headline);
         return;
       }
     }
     state.auctionRevealed = true;
-    render();
+    const winner = state.auctionCommitted.reduce((a, b) => (a.bid >= b.bid ? a : b));
+    state.auctionVerdict = {
+      kind: 'ok',
+      headline: `Winner: ${winner.bidder} with a bid of ${winner.bid}.`,
+      detail: 'Every opening matched its commitment, so all bids are provably the ones sealed before the reveal. Commit-then-reveal removes any last-look advantage.'
+    };
+    render(state.auctionVerdict.headline);
   });
 };
 
