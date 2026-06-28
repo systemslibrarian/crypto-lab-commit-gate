@@ -1,7 +1,5 @@
 # crypto-lab-commit-gate
 
-[![crypto-lab portfolio](https://img.shields.io/badge/crypto--lab-portfolio-blue?style=flat-square)](https://systemslibrarian.github.io/crypto-lab/)
-
 ## What It Is
 crypto-lab-commit-gate is a browser demo of two commitment primitives implemented in code as SHA-256 hash commitments and Pedersen commitments over P-256. It shows the commit/open lifecycle, the binding property, and the hiding property with interactive checks tied to live computations. The lab contrasts computational hiding in hash commitments with information-theoretic hiding in Pedersen commitments, and it includes a broken no-blinding construction to demonstrate failure modes. The problem it addresses is how to bind a value now and reveal it later without allowing undetected changes or premature disclosure.
 
@@ -10,9 +8,11 @@ crypto-lab-commit-gate is a browser demo of two commitment primitives implemente
 - Use Pedersen commitments in MPC and ZKP constructions when additive homomorphism is needed, because commitments can be combined and opened as sums.
 - Use hash commitments when setup simplicity and broad platform support are priorities, because SHA-256 commitments only require hashing and randomness.
 - Do not use unblinded commitments like SHA-256(m) for low-entropy messages, because dictionary attacks can recover the committed value.
+- Do NOT use this as production code — it is a teaching demo of the commitment mechanics, not a hardened or audited library.
 
 ## Live Demo
-https://systemslibrarian.github.io/crypto-lab-commit-gate/
+
+**[systemslibrarian.github.io/crypto-lab-commit-gate](https://systemslibrarian.github.io/crypto-lab-commit-gate/)**
 
 The demo opens with a plain-language primer (the commit→open→verify lifecycle plus the binding and hiding properties) and a symbol legend, then walks through six interactive exhibits. Each exhibit shows its governing equation, runs real in-browser cryptography, and reports an interpreted verdict — a plain-English headline explaining what just happened and why it matters — alongside the raw values. The commit/open exhibit lets you **reveal a different message than you sealed and watch verification reject it**, making the binding property tangible; the hiding exhibit contrasts a properly blinded commitment against a broken unblinded one that falls to a live dictionary attack. The Pedersen exhibit adds two commitments without opening them and verifies the sum opens correctly, and the sealed-bid auction shows commit-then-reveal removing any last-look advantage. The commitment primitives are covered by a vitest suite that runs in CI.
 
@@ -30,4 +30,24 @@ The demo opens with a plain-language primer (the commit→open→verify lifecycl
 - Threshold signature systems and DKG stacks (including FROST-family workflows) use nonce or share commitments to prevent adaptive tampering across rounds.
 - Modern SNARK systems use polynomial commitments (for example KZG-style commitments in proving systems) to bind polynomials while enabling succinct verification.
 
-> *"So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31*
+## How to Run Locally
+
+```bash
+git clone https://github.com/systemslibrarian/crypto-lab-commit-gate
+cd crypto-lab-commit-gate
+npm install
+npm run dev
+```
+
+## Related Demos
+- [crypto-lab-bulletproofs](https://systemslibrarian.github.io/crypto-lab-bulletproofs/) — range proofs built directly on Pedersen commitments over ristretto255.
+- [crypto-lab-vss-gate](https://systemslibrarian.github.io/crypto-lab-vss-gate/) — Feldman and Pedersen verifiable secret sharing, which use commitments to detect cheating.
+- [crypto-lab-zk-proof-lab](https://systemslibrarian.github.io/crypto-lab-zk-proof-lab/) — Schnorr commitments and Fiat-Shamir, commitments inside an interactive proof.
+- [crypto-lab-snark-arena](https://systemslibrarian.github.io/crypto-lab-snark-arena/) — zk-SNARKs whose proving systems rely on polynomial commitments.
+- [crypto-lab-frost-threshold](https://systemslibrarian.github.io/crypto-lab-frost-threshold/) — FROST threshold signing, which uses nonce and VSS commitments across rounds.
+
+---
+
+*One of 60+ browser demos in the [Crypto Lab](https://crypto-lab.systemslibrarian.dev/) suite.*
+
+*"So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31*
