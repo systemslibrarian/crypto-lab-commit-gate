@@ -23,15 +23,21 @@ html[data-theme='light'] {
   --line: #cbd5e1;
   --surface-1: #f8fafc;
   --surface-2: #e2e8f0;
-  --brand: hsl(196 93% 37%);
+  --brand: hsl(196 93% 32%);
   --brand-soft: hsl(196 74% 27%);
-  --ok: hsl(156 78% 30%);
+  --ok: hsl(156 78% 26%);
   --danger: hsl(2 72% 44%);
-  --focus-ring: hsl(196 93% 37%);
+  --focus-ring: hsl(196 93% 32%);
 }
 
 * {
   box-sizing: border-box;
+}
+
+/* Explicit canvas background: WebKit reports body->canvas propagation as
+   transparent, which breaks automated contrast checks. */
+html {
+  background-color: var(--paper);
 }
 
 /* --- Screen-reader only utility --- */
@@ -52,7 +58,7 @@ html[data-theme='light'] {
   position: absolute;
   left: 1rem;
   top: -10rem;
-  background: var(--brand);
+  background-color: var(--brand);
   color: var(--paper);
   padding: 0.6rem 1rem;
   z-index: 100;
@@ -81,7 +87,7 @@ body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
   font-size: clamp(0.9375rem, 0.875rem + 0.25vw, 1.0625rem);
   line-height: 1.6;
-  background: var(--paper);
+  background-color: var(--paper);
   color: var(--ink);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
@@ -100,7 +106,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 1.4rem;
-  background: var(--card);
+  background-color: var(--card);
 }
 
 .eyebrow {
@@ -141,7 +147,7 @@ p {
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.88em;
-  background: var(--surface-2);
+  background-color: var(--surface-2);
   padding: 0.1em 0.35em;
   border-radius: 5px;
   color: var(--brand-soft);
@@ -165,7 +171,7 @@ code {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   border: 1px solid var(--line);
   border-radius: 999px;
   padding: 0.3rem 0.7rem;
@@ -179,7 +185,7 @@ code {
   width: 1.35rem;
   height: 1.35rem;
   border-radius: 50%;
-  background: var(--brand);
+  background-color: var(--brand);
   color: var(--paper);
   font-size: 0.75rem;
   font-weight: 700;
@@ -229,7 +235,7 @@ code {
 .equation {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.95rem;
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   border: 1px solid var(--line);
   border-left: 3px solid var(--brand);
   border-radius: 8px;
@@ -250,22 +256,22 @@ code {
   margin-top: 0.8rem;
   border: 1px solid var(--line);
   border-left-width: 4px;
-  background: var(--surface-1);
+  background-color: var(--surface-1);
 }
 
 .verdict[data-kind='ok'] {
   border-left-color: var(--ok);
-  background: hsl(150 60% 40% / 0.1);
+  background-color: hsl(150 60% 40% / 0.1);
 }
 
 .verdict[data-kind='fail'] {
   border-left-color: var(--danger);
-  background: hsl(2 80% 55% / 0.1);
+  background-color: hsl(2 80% 55% / 0.1);
 }
 
 .verdict[data-kind='info'] {
   border-left-color: var(--brand);
-  background: hsl(197 80% 55% / 0.08);
+  background-color: hsl(197 80% 55% / 0.08);
 }
 
 .verdict[data-kind='pending'] {
@@ -364,7 +370,7 @@ code {
 
 .bias-track {
   height: 0.9rem;
-  background: var(--surface-2);
+  background-color: var(--surface-2);
   border-radius: 999px;
   overflow: hidden;
 }
@@ -372,7 +378,7 @@ code {
 .bias-fill {
   display: block;
   height: 100%;
-  background: var(--brand);
+  background-color: var(--brand);
   border-radius: 999px;
   transition: width 350ms ease;
 }
@@ -397,7 +403,7 @@ code {
   border: 1px solid var(--line);
   border-radius: 12px;
   padding: 1.4rem;
-  background: var(--card);
+  background-color: var(--card);
 }
 
 /* --- Theme toggle --- */
@@ -410,7 +416,7 @@ code {
   min-height: 2.75rem;
   border-radius: 50%;
   border: 1px solid var(--line);
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   color: var(--ink);
   cursor: pointer;
   z-index: 10;
@@ -422,7 +428,7 @@ code {
 }
 
 .theme-toggle:hover {
-  background: var(--surface-2);
+  background-color: var(--surface-2);
 }
 
 /* --- Controls --- */
@@ -449,7 +455,7 @@ input {
   min-height: 2.75rem;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   color: var(--ink);
   padding: 0.5rem 0.65rem;
   width: 100%;
@@ -467,7 +473,7 @@ button {
   min-width: 2.75rem;
   border-radius: 10px;
   border: 1px solid var(--line);
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   color: var(--ink);
   padding: 0.5rem 0.85rem;
   cursor: pointer;
@@ -475,7 +481,7 @@ button {
 }
 
 button:hover {
-  background: var(--surface-2);
+  background-color: var(--surface-2);
 }
 
 /* --- Monospace output --- */
@@ -492,7 +498,7 @@ button:hover {
   border: 1px dashed var(--line);
   border-radius: 10px;
   padding: 0.8rem;
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   transition: transform 180ms ease;
 }
 
@@ -557,12 +563,12 @@ th {
 }
 
 .result-status[data-status='success'] {
-  background: hsl(150 60% 20% / 0.3);
+  background-color: hsl(150 60% 20% / 0.3);
   border-left: 3px solid var(--ok);
 }
 
 .result-status[data-status='pending'] {
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   border-left: 3px solid var(--line);
 }
 
@@ -579,13 +585,13 @@ th {
   padding: 0.8rem;
   text-decoration: none;
   color: inherit;
-  background: var(--surface-1);
+  background-color: var(--surface-1);
   min-height: 2.75rem;
   transition: background 150ms ease, border-color 150ms ease;
 }
 
 .map-card:hover {
-  background: var(--surface-2);
+  background-color: var(--surface-2);
   border-color: var(--brand);
 }
 
