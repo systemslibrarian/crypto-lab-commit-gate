@@ -169,13 +169,17 @@ const render = (announceText?: string): void => {
     <main class="shell" id="main-content">
       <header class="hero">
         <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
-        <p class="eyebrow">systemslibrarian · crypto-lab</p>
-        <h1>crypto-lab-commit-gate</h1>
-        <p>
-          A commitment lets you <strong>lock a value now</strong> and <strong>reveal it later</strong> —
-          like sealing a number in an envelope and handing it over. This lab builds two kinds in real,
-          live cryptography and lets you try to cheat each one.
-        </p>
+        <div class="cl-hero">
+          <div class="cl-hero-main">
+            <h1 class="cl-hero-title">Commitment Schemes</h1>
+            <p class="cl-hero-sub">Commit · Open · Verify — hiding + binding</p>
+            <p class="cl-hero-desc">Build live SHA-256 hash and Pedersen commitments, publish them, then try to cheat the open to feel where binding and hiding hold or break.</p>
+          </div>
+          <aside class="cl-hero-why" aria-label="Why it matters">
+            <span class="cl-hero-why-label">WHY IT MATTERS</span>
+            <p class="cl-hero-why-text">Commitments underpin sealed-bid auctions, coin flips, and zero-knowledge proofs — anywhere you must lock in a value before revealing it. A broken scheme lets a cheater change their answer after seeing yours, or leak the secret early.</p>
+          </aside>
+        </div>
 
         <div class="primer">
           <div class="primer-flow" aria-label="Commitment lifecycle">
