@@ -13,6 +13,8 @@ import {
 import {
   addCommitments,
   commitPedersen,
+  getGenerators,
+  isOnCurve,
   verifyHomomorphicProperty,
   verifyPedersenOpening
 } from './pedersen';
@@ -96,6 +98,14 @@ describe('pedersen commitments on P-256', () => {
     const homo = await verifyHomomorphicProperty(c1, c2);
     expect(homo.ok).toBe(true);
     expect(homo.sumMessage).toBe(43n);
+  });
+
+  it('derives H as a real on-curve point distinct from G (hash-to-curve)', async () => {
+    const { G, H } = await getGenerators();
+    expect(isOnCurve(G)).toBe(true);
+    expect(isOnCurve(H)).toBe(true);
+    // H must not equal G, or the "independent generators" claim collapses.
+    expect(H.x === G.x && H.y === G.y).toBe(false);
   });
 
   it('matches a direct point sum of the two commitments', async () => {

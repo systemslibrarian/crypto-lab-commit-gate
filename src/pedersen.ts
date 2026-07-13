@@ -1,5 +1,6 @@
 const P = BigInt('0xffffffff00000001000000000000000000000000ffffffffffffffffffffffff');
 const A = BigInt('0xffffffff00000001000000000000000000000000fffffffffffffffffffffffc');
+const B = BigInt('0x5ac635d8aa3a93e7b3ebbd55769886bc651d06b0cc53b0f63bce3c3e27d2604b');
 const N = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
 
 type Point = {
@@ -113,15 +114,72 @@ const randomScalar = (): bigint => {
 	}
 };
 
-const deriveH = async (): Promise<Point> => {
-	const data = new TextEncoder().encode('crypto-lab-commit-gate/pedersen/H');
-	const digest = await crypto.subtle.digest('SHA-256', data.buffer);
-	const s = mod(bytesToBigint(new Uint8Array(digest)), N - 1n) + 1n;
-	const h = scalarMultiply(s, G);
-	if (isInfinity(h)) {
-		throw new Error('Invalid derived H');
+/* Modular exponentiation, needed for the square root below. */
+const modPow = (base: bigint, exp: bigint, m: bigint): bigint => {
+	let result = 1n;
+	let b = mod(base, m);
+	let e = exp;
+	while (e > 0n) {
+		if ((e & 1n) === 1n) {
+			result = mod(result * b, m);
+		}
+		b = mod(b * b, m);
+		e >>= 1n;
 	}
-	return h;
+	return result;
+};
+
+/* Square root mod P. P-256's prime satisfies P ≡ 3 (mod 4), so a square root
+ * of a (when one exists) is a^((P+1)/4) mod P. Returns null if a is a
+ * non-residue (the candidate x had no matching y on the curve). */
+const sqrtModP = (a: bigint): bigint | null => {
+	if (a === 0n) {
+		return 0n;
+	}
+	const r = modPow(a, (P + 1n) / 4n, P);
+	return mod(r * r, P) === mod(a, P) ? r : null;
+};
+
+/*
+ * Derive the second Pedersen generator H by HASH-TO-CURVE (try-and-increment),
+ * NOT as a scalar multiple of G.
+ *
+ * WHY THIS MATTERS FOR BINDING: if H = s·G for a KNOWN scalar s, then a
+ * committer knows log_G(H) = s and can open a single commitment to two
+ * different messages:
+ *     C = r·G + m·H = (r + s·m)·G
+ * so any (m', r') with r' + s·m' = r + s·m opens the same C — binding is BROKEN.
+ * Deriving H by hashing to a curve point makes log_G(H) unknown to everyone, so
+ * finding such an (m', r') would require solving a discrete log. That unknown
+ * relationship is exactly what makes Pedersen commitments binding.
+ *
+ * Method: hash a domain-separated label to a field element x, try to solve the
+ * curve equation y² = x³ + a·x + b for y; if x is not the abscissa of a curve
+ * point, increment a counter and rehash. Nobody (including us) learns the
+ * discrete log of the resulting H base G.
+ */
+const deriveH = async (): Promise<Point> => {
+	const encoder = new TextEncoder();
+	for (let counter = 0; counter < 1024; counter += 1) {
+		const label = `crypto-lab-commit-gate/pedersen/H/hash-to-curve/${counter}`;
+		const digest = await crypto.subtle.digest('SHA-256', encoder.encode(label));
+		const x = mod(bytesToBigint(new Uint8Array(digest)), P);
+		const rhs = mod(mod(x * x * x, P) + mod(A * x, P) + B, P);
+		const y = sqrtModP(rhs);
+		if (y === null) {
+			continue;
+		}
+		// Pick the even-y root deterministically so H is reproducible.
+		const yFinal = (y & 1n) === 0n ? y : mod(P - y, P);
+		const h: Point = { x, y: yFinal };
+		// Sanity: H must be a real, non-identity point on the curve.
+		const onCurve = mod(yFinal * yFinal, P) === rhs;
+		if (!onCurve || isInfinity(h)) {
+			continue;
+		}
+		return h;
+	}
+	throw new Error('Failed to hash-to-curve for H');
 };
 
 let cachedH: Point | null = null;
@@ -131,6 +189,17 @@ export const getGenerators = async (): Promise<{ G: Point; H: Point }> => {
 		cachedH = await deriveH();
 	}
 	return { G, H: cachedH };
+};
+
+/* Curve membership check, exported so tests can assert H is a genuine P-256
+ * point produced by hash-to-curve (not fabricated). */
+export const isOnCurve = (p: EcPoint): boolean => {
+	if (isInfinity(p)) {
+		return false;
+	}
+	const lhs = mod(p.y * p.y, P);
+	const rhs = mod(mod(p.x * p.x * p.x, P) + mod(A * p.x, P) + B, P);
+	return lhs === rhs;
 };
 
 export const pointToHex = (p: EcPoint): string => {

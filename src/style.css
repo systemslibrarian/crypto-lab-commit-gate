@@ -617,6 +617,259 @@ th {
   font-size: 0.88rem;
 }
 
+/* --- Callout (binding rationale, Exhibit 4) --- */
+.callout {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--brand);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  margin: 0.8rem 0;
+  background-color: var(--surface-1);
+}
+
+.callout-title {
+  margin: 0 0 0.35rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.callout p {
+  color: var(--ink);
+  margin: 0.35rem 0 0;
+  font-size: 0.92rem;
+}
+
+.callout p:first-of-type {
+  margin-top: 0;
+}
+
+/* --- Binding "work remaining" meter (Exhibit 2) --- */
+.binding-meter {
+  margin: 0.9rem 0 0.2rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--surface-1);
+}
+
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  color: var(--ink);
+}
+
+.meter-frac {
+  color: var(--brand-soft);
+  font-size: 0.82rem;
+}
+
+.meter-track {
+  height: 0.7rem;
+  margin: 0.5rem 0;
+  background-color: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.meter-fill {
+  display: block;
+  height: 100%;
+  min-width: 3px;
+  background-color: var(--danger);
+  border-radius: 999px;
+}
+
+.meter-note {
+  margin: 0.4rem 0 0;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+/* --- Hiding contrast panel (Exhibit 3) --- */
+.hiding-contrast {
+  margin-top: 0.9rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--surface-1);
+}
+
+.hiding-contrast h4 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.contrast-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.7rem;
+}
+
+.contrast-card {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 0.75rem 0.85rem;
+  background-color: var(--card);
+}
+
+.contrast-card.is-broken {
+  border-color: var(--danger);
+}
+
+.contrast-title {
+  margin: 0;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.contrast-kind {
+  margin: 0.1rem 0 0.4rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--brand-soft);
+}
+
+.contrast-body {
+  margin: 0 0 0.5rem;
+  font-size: 0.88rem;
+  color: var(--ink);
+}
+
+.contrast-status {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+
+.contrast-badge {
+  flex: 0 0 auto;
+  display: inline-grid;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: 50%;
+  font-weight: 800;
+  font-size: 0.85rem;
+}
+
+.badge-safe {
+  color: var(--ok);
+  border: 1.5px solid var(--ok);
+}
+
+.badge-broken {
+  color: var(--danger);
+  border: 1.5px solid var(--danger);
+}
+
+/* --- Homomorphism vector diagram (Exhibit 4) --- */
+.homo-viz {
+  margin: 0.9rem 0 0;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background-color: var(--surface-1);
+}
+
+.homo-svg {
+  display: block;
+  width: 100%;
+  max-width: 520px;
+  height: auto;
+  margin: 0 auto;
+}
+
+.hv-guide {
+  stroke: var(--line);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.hv-guide-label {
+  fill: var(--muted);
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.hv-c1 {
+  stroke: var(--brand);
+  stroke-width: 3;
+}
+
+.hv-c2 {
+  stroke: hsl(38 92% 50%);
+  stroke-width: 3;
+}
+
+html[data-theme='light'] .hv-c2 {
+  stroke: hsl(35 92% 38%);
+}
+
+.hv-sum {
+  stroke: var(--ok);
+  stroke-width: 3;
+}
+
+.hv-arrowhead {
+  fill: var(--muted);
+}
+
+.hv-origin {
+  fill: var(--muted);
+}
+
+.hv-c1-dot {
+  fill: var(--brand);
+}
+
+.hv-sum-dot {
+  fill: var(--ok);
+}
+
+.hv-lbl {
+  fill: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.homo-viz figcaption {
+  margin-top: 0.6rem;
+  font-size: 0.86rem;
+  color: var(--ink);
+}
+
+.hv-key {
+  font-weight: 700;
+  padding: 0.02em 0.3em;
+  border-radius: 4px;
+}
+
+.hv-key-c1 {
+  color: var(--brand-soft);
+}
+
+.hv-key-c2 {
+  color: hsl(35 92% 34%);
+}
+
+html[data-theme='dark'] .hv-key-c2 {
+  color: hsl(38 92% 62%);
+}
+
+.hv-key-sum {
+  color: var(--ok);
+}
+
 /* --- Reduced motion --- */
 @media (prefers-reduced-motion: reduce) {
   *,

@@ -15,6 +15,7 @@ import {
   verifyHomomorphicProperty,
   verifyPedersenOpening
 } from './pedersen';
+import { renderHomomorphismSvg } from './homomorphism-viz';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) {
@@ -70,12 +71,15 @@ type State = {
   hashOpen: HashOpenState | null;
   e1Verdict: Verdict;
   e2Verdict: Verdict;
+  e2Tries: number;
   e3Hiding: Verdict;
   hidingViz: { zero: number; one: number } | null;
   e3Broken: Verdict;
   brokenCommitHex: string;
   e4Open: Verdict;
   e4Homomorphic: Verdict;
+  e4Viz: { m1: number; m2: number } | null;
+  hidingContrast: 'normal' | 'infinite' | null;
   auctionCommitted: AuctionEntry[];
   auctionRevealed: boolean;
   auctionVerdict: Verdict;
@@ -87,12 +91,15 @@ const state: State = {
   hashOpen: null,
   e1Verdict: pending('Commit a value to begin. A fresh blinding factor r is generated for you.'),
   e2Verdict: pending('Run the search to attempt a binding break.'),
+  e2Tries: 0,
   e3Hiding: pending('Run the indistinguishability test.'),
   hidingViz: null,
   e3Broken: pending('Build an unblinded commitment, then run the dictionary attack on it.'),
   brokenCommitHex: '',
   e4Open: pending('Commit a value, then open it to verify.'),
   e4Homomorphic: pending('Commit two values and check the homomorphic sum.'),
+  e4Viz: null,
+  hidingContrast: null,
   auctionCommitted: [],
   auctionRevealed: false,
   auctionVerdict: pending('All bidders commit first; no one can change a bid after seeing the others.')
@@ -148,17 +155,110 @@ const renderBiasViz = (viz: { zero: number; one: number } | null): string => {
     const pct = (fraction * 100).toFixed(1);
     return `
       <div class="bias-row">
-        <span class="bias-label">P(last bit = 1 | m=${escapeHtml(label)})</span>
+        <span class="bias-label">P(first output byte is odd | m=${escapeHtml(label)})</span>
         <span class="bias-track"><span class="bias-fill" style="width:${pct}%"></span></span>
         <span class="bias-value mono">${pct}%</span>
       </div>`;
   };
   return `
-    <figure class="bias-viz" aria-label="Last-bit frequency for commitments to 0 versus 1">
+    <figure class="bias-viz" aria-label="Frequency that the first output byte is odd, for commitments to 0 versus 1">
       ${bar('0', viz.zero)}
       ${bar('1', viz.one)}
-      <figcaption>Equal-height bars mean an observer learns nothing about the committed value.</figcaption>
+      <figcaption>This samples one bit (the low bit of C's first byte). Near-equal bars mean that statistic reveals nothing about the committed value; a full commitment leaks nothing across all 256 bits.</figcaption>
     </figure>`;
+};
+
+const renderBindingMeter = (tries: number): string => {
+  if (tries <= 0) {
+    return '';
+  }
+  // Collision work for a 256-bit hash is ~2^128 by the birthday bound.
+  // Fraction covered = tries / 2^128 — so tiny we describe it in words and
+  // leading zeros rather than a plottable bar (which would round to 0 width).
+  const SPACE_LOG10 = 128 * Math.log10(2); // ≈ 38.53 → search space ~10^38.5
+  const triesLog10 = Math.log10(tries);
+  const leadingZeros = Math.max(0, Math.floor(SPACE_LOG10 - triesLog10) - 1);
+  const zeros = '0'.repeat(Math.min(leadingZeros, 34));
+  // Time to exhaust the space at 1e9 hashes/sec, in years.
+  const secondsToFinish = Math.pow(2, 128) / 1e9;
+  const yearsToFinish = secondsToFinish / (60 * 60 * 24 * 365);
+  const yearsExp = Math.floor(Math.log10(yearsToFinish));
+  return `
+    <div class="binding-meter" role="group" aria-label="Binding search progress against a 2 to the 128 search space">
+      <div class="meter-head">
+        <span>Fraction of the ~2¹²⁸ collision search covered so far</span>
+        <span class="mono meter-frac">0.${zeros}…%</span>
+      </div>
+      <div class="meter-track" aria-hidden="true">
+        <span class="meter-fill" style="width:0.5%"></span>
+      </div>
+      <p class="meter-note">
+        You have tried <strong class="mono">${tries.toLocaleString()}</strong> of roughly
+        <strong class="mono">2¹²⁸ ≈ 3.4 × 10³⁸</strong> needed for a birthday collision. Even at a
+        billion hashes per second, exhausting that space takes about
+        <strong class="mono">10${toSup(yearsExp)}</strong> years — far longer than the age of the
+        universe. That gap, not your batch of tries, is what makes SHA-256 binding.
+      </p>
+    </div>`;
+};
+
+const SUP: Record<string, string> = {
+  '0': '⁰', '1': '¹', '2': '²', '3': '³', '4': '⁴',
+  '5': '⁵', '6': '⁶', '7': '⁷', '8': '⁸', '9': '⁹', '-': '⁻'
+};
+const toSup = (n: number): string =>
+  String(n).split('').map((c) => SUP[c] ?? c).join('');
+
+const renderHidingContrast = (mode: 'normal' | 'infinite' | null): string => {
+  if (mode === null) {
+    return '';
+  }
+  const infinite = mode === 'infinite';
+  return `
+    <div class="hiding-contrast" aria-labelledby="hiding-contrast-heading">
+      <h4 id="hiding-contrast-heading">Two kinds of hidden: computational vs information-theoretic</h4>
+      <div class="contrast-grid">
+        <div class="contrast-card ${infinite ? 'is-broken' : ''}" data-prim="hash">
+          <p class="contrast-title">SHA-256 hash commitment</p>
+          <p class="contrast-kind">Computational hiding</p>
+          <p class="contrast-body">
+            Hidden only because inverting SHA-256 is hard. The value <em>is</em> pinned
+            down by <code>C</code> — there is exactly one <code>(m, r)</code> behind a
+            typical hash. Secrecy rests on the attacker not having enough compute to find it.
+          </p>
+          <p class="contrast-status">
+            <span class="contrast-badge ${infinite ? 'badge-broken' : 'badge-safe'}" aria-hidden="true">${infinite ? '✕' : '✓'}</span>
+            <span>${infinite
+              ? 'Against UNLIMITED compute: broken in principle — the attacker inverts the hash and reads m.'
+              : 'Against a real (bounded) attacker: safe — inverting SHA-256 is infeasible.'}</span>
+          </p>
+        </div>
+        <div class="contrast-card" data-prim="pedersen">
+          <p class="contrast-title">Pedersen commitment</p>
+          <p class="contrast-kind">Information-theoretic hiding</p>
+          <p class="contrast-body">
+            <code>r·G</code> is a uniform, one-time pad over the whole group, so
+            <code>C = r·G + m·H</code> is equally likely for <em>every</em> message
+            <code>m</code> (each with its own <code>r</code>). <code>C</code> literally
+            carries zero information about <code>m</code>.
+          </p>
+          <p class="contrast-status">
+            <span class="contrast-badge badge-safe" aria-hidden="true">✓</span>
+            <span>${infinite
+              ? 'Against UNLIMITED compute: STILL perfectly hidden — no amount of computation helps.'
+              : 'Against a real attacker: perfectly hidden, with margin to spare.'}</span>
+          </p>
+        </div>
+      </div>
+      <div class="button-row">
+        <button id="e3-attacker-toggle" type="button" aria-pressed="${infinite}">
+          ${infinite ? 'Restore a real (bounded) attacker' : 'Unleash an infinite-compute attacker'}
+        </button>
+      </div>
+      <p class="hint">${infinite
+        ? 'With unbounded compute the hash commitment falls (its secrecy was only computational), while Pedersen still leaks nothing — that is the practical meaning of information-theoretic hiding.'
+        : 'Toggle to simulate an attacker with unlimited computation and see which primitive still hides.'}</p>
+    </div>`;
 };
 
 const render = (announceText?: string): void => {
@@ -245,14 +345,17 @@ const render = (announceText?: string): void => {
       <section class="exhibit" aria-labelledby="exhibit-2-heading">
         <h2 id="exhibit-2-heading">Exhibit 2 — Binding, Quantified</h2>
         <p>
-          To break binding you would need two different messages that produce the <em>same</em> commitment.
-          We fix one commitment and brute-force thousands of random alternatives looking for a collision.
-          You will not find one — and the counter shows why.
+          To break binding you would need a second message that produces the <em>same</em> commitment as the one you
+          sealed. Go ahead and <strong>try</strong>: each click hashes a fresh batch of random alternatives. It will
+          always fail — but the point is not the failure, it is <em>how little of the search space you have covered</em>.
+          The meter below is anchored to the real work a collision requires (≈ 2¹²⁸ hashes), so a few thousand tries is
+          not evidence of binding; the size of that number is.
         </p>
         <p class="equation">find m′ ≠ m such that SHA-256(r ‖ m′) = SHA-256(r ‖ m)</p>
         <div class="button-row">
-          <button id="e2-binding" type="button">Search for a collision (3,000 tries)</button>
+          <button id="e2-binding" type="button">Try to find a colliding m′ (batch of 3,000)</button>
         </div>
+        ${renderBindingMeter(state.e2Tries)}
         ${renderVerdict(state.e2Verdict)}
       </section>
 
@@ -269,6 +372,7 @@ const render = (announceText?: string): void => {
         </div>
         ${renderBiasViz(state.hidingViz)}
         ${renderVerdict(state.e3Hiding)}
+        ${renderHidingContrast(state.hidingContrast)}
 
         <hr class="exhibit-divider" />
         <h3>What happens if you drop <code>r</code>?</h3>
@@ -298,6 +402,17 @@ const render = (announceText?: string): void => {
           sum of the values. This underpins private tallies, MPC, and range proofs.
         </p>
         <p class="equation">C(m₁,r₁) + C(m₂,r₂) = C(m₁+m₂, r₁+r₂)</p>
+        <div class="callout callout-binding" role="note" aria-label="Why the H generator must have an unknown discrete log">
+          <p class="callout-title">Why binding actually holds here</p>
+          <p>
+            Binding rests on one requirement: <strong>nobody may know the discrete log of <code>H</code> base <code>G</code></strong>.
+            If a committer knew a scalar <code>s</code> with <code>H = s·G</code>, then
+            <code>C = r·G + m·H = (r + s·m)·G</code>, and they could open the same <code>C</code> to a second
+            message <code>m′</code> by picking <code>r′ = r + s·(m − m′)</code> — binding would be broken.
+            To avoid that, this demo derives <code>H</code> by <strong>hash-to-curve</strong> (try-and-increment on
+            P-256), so <code>log_G(H)</code> is unknown to everyone, including us.
+          </p>
+        </div>
         <div class="controls-grid">
           <label for="e4-m1">m₁
             <input id="e4-m1" type="number" value="12" min="0" />
@@ -312,6 +427,7 @@ const render = (announceText?: string): void => {
         </div>
         ${renderVerdict(state.e4Open)}
         ${renderVerdict(state.e4Homomorphic)}
+        ${state.e4Viz ? renderHomomorphismSvg({ m: state.e4Viz.m1, r: 1 }, { m: state.e4Viz.m2, r: 2 }) : ''}
       </section>
 
       <section class="exhibit" aria-labelledby="exhibit-5-heading">
@@ -481,17 +597,18 @@ const bindEvents = (): void => {
     state.e2Verdict = { kind: 'pending', headline: 'Searching for a collision…' };
     render(state.e2Verdict.headline);
     const run = await runBindingAttempt('commit-me', 3000);
+    state.e2Tries += run.tries;
     state.e2Verdict = {
-      kind: run.foundCollision ? 'fail' : 'ok',
+      kind: run.foundCollision ? 'fail' : 'info',
       headline: run.foundCollision
         ? 'Collision found — binding broken!'
-        : `No collision in ${run.tries.toLocaleString()} tries. Binding holds.`,
+        : `Still no colliding m′ (${state.e2Tries.toLocaleString()} tried so far).`,
       detail: run.foundCollision
         ? 'A second message produced the same commitment.'
-        : 'A genuine break needs a SHA-256 collision: expected work ≈ 2¹²⁸ operations. At a billion tries per second that is far longer than the age of the universe — so binding is computationally guaranteed.',
+        : 'This failure is NOT the proof — you have barely dented the search space (see the meter above). Binding is guaranteed because finding any m′ needs ≈ 2¹²⁸ hashes, not because a few thousand tries missed. Click again to watch the fraction covered stay effectively zero.',
       rows: [
         ['Fixed commitment', truncate(run.originalCommitmentHex, 40)],
-        ['Random messages tried', run.tries.toLocaleString()],
+        ['Total messages tried', state.e2Tries.toLocaleString()],
         ['Collisions found', String(run.foundCollision ? 1 : 0)]
       ]
     };
@@ -506,6 +623,9 @@ const bindEvents = (): void => {
     const c1 = await commitHash('1', randomBlindingFactor());
     const stats = await runHidingStats(512);
     state.hidingViz = { zero: stats.bit1BiasZero, one: stats.bit1BiasOne };
+    if (state.hidingContrast === null) {
+      state.hidingContrast = 'normal';
+    }
     const indistinguishable = stats.absBiasDelta < 0.1;
     state.e3Hiding = {
       kind: indistinguishable ? 'ok' : 'info',
@@ -520,6 +640,15 @@ const bindEvents = (): void => {
       ]
     };
     render(state.e3Hiding.headline);
+  });
+
+  document.querySelector<HTMLButtonElement>('#e3-attacker-toggle')?.addEventListener('click', () => {
+    state.hidingContrast = state.hidingContrast === 'infinite' ? 'normal' : 'infinite';
+    render(
+      state.hidingContrast === 'infinite'
+        ? 'Infinite-compute attacker: the hash commitment is broken in principle; Pedersen still hides perfectly.'
+        : 'Bounded attacker restored: both commitments hide.'
+    );
   });
 
   document.querySelector<HTMLButtonElement>('#e3-broken-commit')?.addEventListener('click', async () => {
@@ -570,7 +699,7 @@ const bindEvents = (): void => {
       kind: ok ? 'ok' : 'fail',
       headline: ok ? `Opened m₁ = ${m} and the point checks out.` : 'Opening failed.',
       detail: ok
-        ? 'Bob recomputes r·G + m·H from the revealed scalars and gets exactly the published point. The commitment is binding by the hardness of discrete log on P-256.'
+        ? 'Bob recomputes r·G + m·H from the revealed scalars and gets exactly the published point. Binding holds because log_G(H) is unknown (H is hash-to-curve, not a multiple of G) — so no second opening exists.'
         : 'The recomputed curve point did not match.',
       rows: [
         ['Commitment C', truncate(pointToHex(commit.commitment), 56)],
@@ -586,6 +715,7 @@ const bindEvents = (): void => {
     const c1 = await commitPedersen(m1);
     const c2 = await commitPedersen(m2);
     const homo = await verifyHomomorphicProperty(c1, c2);
+    state.e4Viz = homo.ok ? { m1: Number(m1), m2: Number(m2) } : null;
     state.e4Homomorphic = {
       kind: homo.ok ? 'ok' : 'fail',
       headline: homo.ok
