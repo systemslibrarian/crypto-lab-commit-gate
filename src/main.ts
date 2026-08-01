@@ -345,15 +345,17 @@ const render = (announceText?: string): void => {
       <section class="exhibit" aria-labelledby="exhibit-2-heading">
         <h2 id="exhibit-2-heading">Exhibit 2 — Binding, Quantified</h2>
         <p>
-          To break binding you would need a second message that produces the <em>same</em> commitment as the one you
-          sealed. Go ahead and <strong>try</strong>: each click hashes a fresh batch of random alternatives. It will
-          always fail — but the point is not the failure, it is <em>how little of the search space you have covered</em>.
-          The meter below is anchored to the real work a collision requires (≈ 2¹²⁸ hashes), so a few thousand tries is
-          not evidence of binding; the size of that number is.
+          To break binding you would need <em>any two</em> distinct openings — <code>(m, r)</code> and <code>(m′, r′)</code> —
+          that produce the <em>same</em> commitment. Both are yours to choose, so this is a <strong>collision</strong> search, not a
+          hunt for a second preimage of one fixed commitment, and the birthday bound puts it at ≈ 2¹²⁸ hashes for a 256-bit hash.
+          Go ahead and <strong>try</strong>: each click hashes a fresh batch of alternatives against one sealed commitment — the
+          naive way in, and a strictly harder one. It will always fail — but the point is not the failure, it is <em>how little of
+          the search space you have covered</em>. The meter below is anchored to that ≈ 2¹²⁸ collision bound, so a few thousand
+          tries is not evidence of binding; the size of that number is.
         </p>
-        <p class="equation">find m′ ≠ m such that SHA-256(r ‖ m′) = SHA-256(r ‖ m)</p>
+        <p class="equation">find (m, r) ≠ (m′, r′) such that SHA-256(r ‖ m) = SHA-256(r′ ‖ m′)</p>
         <div class="button-row">
-          <button id="e2-binding" type="button">Try to find a colliding m′ (batch of 3,000)</button>
+          <button id="e2-binding" type="button">Try to find a colliding opening (batch of 3,000)</button>
         </div>
         ${renderBindingMeter(state.e2Tries)}
         ${renderVerdict(state.e2Verdict)}
@@ -602,10 +604,10 @@ const bindEvents = (): void => {
       kind: run.foundCollision ? 'fail' : 'info',
       headline: run.foundCollision
         ? 'Collision found — binding broken!'
-        : `Still no colliding m′ (${state.e2Tries.toLocaleString()} tried so far).`,
+        : `Still no colliding opening (${state.e2Tries.toLocaleString()} tried so far).`,
       detail: run.foundCollision
-        ? 'A second message produced the same commitment.'
-        : 'This failure is NOT the proof — you have barely dented the search space (see the meter above). Binding is guaranteed because finding any m′ needs ≈ 2¹²⁸ hashes, not because a few thousand tries missed. Click again to watch the fraction covered stay effectively zero.',
+        ? 'A second opening produced the same commitment.'
+        : 'This failure is NOT the proof — you have barely dented the search space (see the meter above). Binding holds because even the cheapest break — any two openings that collide — needs ≈ 2¹²⁸ hashes, not because a few thousand tries missed. Click again to watch the fraction covered stay effectively zero.',
       rows: [
         ['Fixed commitment', truncate(run.originalCommitmentHex, 40)],
         ['Total messages tried', state.e2Tries.toLocaleString()],

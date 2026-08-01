@@ -24,7 +24,7 @@ The demo opens with a plain-language primer (the commit→open→verify lifecycl
 - Invalid or inconsistent curve arithmetic in Pedersen implementations can produce incorrect verification outcomes, because commitment equations rely on exact group operations.
 
 ## Real-World Usage
-- Zcash Sapling and Orchard use Pedersen commitments to hide note values while preserving algebra needed by zero-knowledge circuits.
+- Zcash Sapling uses Pedersen commitments on Jubjub for its note commitments; Orchard replaced those with Sinsemilla commitments on Pallas, which is friendlier to Halo 2 lookups. Both still use homomorphic Pedersen commitments for the value commitments that let a circuit balance a transaction.
 - Monero uses Pedersen commitments in RingCT and Bulletproof-based range proofs to hide transaction amounts with additive consistency checks.
 - Ethereum-style commit-reveal workflows (for example ENS reveal phases and many on-chain games) use hash commitments to lock choices before reveal.
 - Threshold signature systems and DKG stacks (including FROST-family workflows) use nonce or share commitments to prevent adaptive tampering across rounds.
