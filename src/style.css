@@ -5,6 +5,12 @@
   --paper: #0b1020;
   --card: #111827;
   --line: #334155;
+  /* Control boundaries only (buttons, text inputs, theme toggle). Those controls
+     are filled with --surface-1, which sits at 1.01:1 (dark) / 1.05:1 (light)
+     against the --card exhibit behind them, so the border is the sole boundary
+     and WCAG 2.1 SC 1.4.11 requires 3:1. --line stays as-is for decorative rules
+     (exhibit outlines, tables, callouts, flow steps). */
+  --line-strong: #5d769a;
   --surface-1: #0f172a;
   --surface-2: #1e293b;
   --brand: hsl(197 100% 58%);
@@ -21,6 +27,7 @@ html[data-theme='light'] {
   --paper: #eef2ff;
   --card: #ffffff;
   --line: #cbd5e1;
+  --line-strong: #6683a7;
   --surface-1: #f8fafc;
   --surface-2: #e2e8f0;
   --brand: hsl(196 93% 32%);
@@ -427,7 +434,7 @@ code {
   height: 2.75rem;
   min-height: 2.75rem;
   border-radius: 50%;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background-color: var(--surface-1);
   color: var(--ink);
   cursor: pointer;
@@ -466,7 +473,7 @@ button {
 input {
   min-height: 2.75rem;
   border-radius: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background-color: var(--surface-1);
   color: var(--ink);
   padding: 0.5rem 0.65rem;
@@ -484,7 +491,7 @@ button {
   min-height: 2.75rem;
   min-width: 2.75rem;
   border-radius: 10px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-strong);
   background-color: var(--surface-1);
   color: var(--ink);
   padding: 0.5rem 0.85rem;
