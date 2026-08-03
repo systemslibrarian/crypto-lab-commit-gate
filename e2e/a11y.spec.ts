@@ -45,14 +45,30 @@ async function scan(page: Page): Promise<void> {
   expect(summary).toEqual([]);
 }
 
+/**
+ * The theme toggle repaints through 150ms colour transitions (.map-card and
+ * friends). Scanning immediately after the click samples half-blended
+ * backgrounds and reports contrast failures that do not exist at rest.
+ */
+async function neutralizeMotion(page: Page): Promise<void> {
+  await page.addStyleTag({
+    content: `*,*::before,*::after{
+      animation-duration:0s!important;animation-delay:0s!important;
+      transition-duration:0s!important;transition-delay:0s!important;
+    }`,
+  });
+}
+
 test('no WCAG A/AA violations in dark theme', async ({ page }) => {
   await page.goto('.');
+  await neutralizeMotion(page);
   await revealAll(page);
   await scan(page);
 });
 
 test('no WCAG A/AA violations in light theme', async ({ page }) => {
   await page.goto('.');
+  await neutralizeMotion(page);
   await page.locator('#cl-theme-toggle').click();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await revealAll(page);
