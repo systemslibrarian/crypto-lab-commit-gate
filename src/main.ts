@@ -215,7 +215,10 @@ const renderHidingContrast = (mode: 'normal' | 'infinite' | null): string => {
   }
   const infinite = mode === 'infinite';
   return `
-    <div class="hiding-contrast" aria-labelledby="hiding-contrast-heading">
+    <!-- role="group" is load-bearing: aria-labelledby is PROHIBITED on a
+         role-less div, so without it assistive tech drops this panel's name
+         entirely. axe files that under "incomplete", not "violations". -->
+    <div class="hiding-contrast" role="group" aria-labelledby="hiding-contrast-heading">
       <h4 id="hiding-contrast-heading">Two kinds of hidden: computational vs information-theoretic</h4>
       <div class="contrast-grid">
         <div class="contrast-card ${infinite ? 'is-broken' : ''}" data-prim="hash">
@@ -282,7 +285,9 @@ const render = (announceText?: string): void => {
         </div>
 
         <div class="primer">
-          <div class="primer-flow" aria-label="Commitment lifecycle">
+          <!-- Same reason as .hiding-contrast: aria-label on a role-less div is
+               prohibited and silently discarded. role="group" makes the name real. -->
+          <div class="primer-flow" role="group" aria-label="Commitment lifecycle">
             <span class="flow-step"><span class="flow-num">1</span> Commit <code>C = f(m, r)</code></span>
             <span class="flow-arrow" aria-hidden="true">→</span>
             <span class="flow-step"><span class="flow-num">2</span> Publish <code>C</code></span>
