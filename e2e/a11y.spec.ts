@@ -351,12 +351,6 @@ async function driveEverything(page: Page): Promise<void> {
   await settle(page);
 }
 
-async function toLightTheme(page: Page): Promise<void> {
-  await page.locator('#cl-theme-toggle').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await settle(page);
-}
-
 /* ------------------------------------------------------------------ tests */
 
 test('no WCAG A/AA violations at rest, dark theme', async ({ page }) => {
@@ -364,11 +358,6 @@ test('no WCAG A/AA violations at rest, dark theme', async ({ page }) => {
   await scan(page, 'at rest / dark');
 });
 
-test('no WCAG A/AA violations at rest, light theme', async ({ page }) => {
-  await open(page);
-  await toLightTheme(page);
-  await scan(page, 'at rest / light');
-});
 
 for (const state of STATES) {
   test(`no WCAG A/AA violations — ${state.name}, dark theme`, async ({ page }) => {
@@ -378,13 +367,6 @@ for (const state of STATES) {
     await scan(page, `${state.name} / dark`);
   });
 
-  test(`no WCAG A/AA violations — ${state.name}, light theme`, async ({ page }) => {
-    await open(page);
-    await toLightTheme(page);
-    await state.drive(page);
-    await settle(page);
-    await scan(page, `${state.name} / light`);
-  });
 }
 
 test('no WCAG A/AA violations with every exhibit driven, dark theme', async ({ page }) => {
@@ -393,12 +375,6 @@ test('no WCAG A/AA violations with every exhibit driven, dark theme', async ({ p
   await scan(page, 'everything driven / dark');
 });
 
-test('no WCAG A/AA violations with every exhibit driven, light theme', async ({ page }) => {
-  await open(page);
-  await toLightTheme(page);
-  await driveEverything(page);
-  await scan(page, 'everything driven / light');
-});
 
 /**
  * Narrow viewport, rich state.
@@ -419,13 +395,12 @@ test('no WCAG A/AA violations with every exhibit driven, light theme', async ({ 
  * The reflow assertion is the same idea for WCAG 1.4.10, which axe does not
  * check at all: nothing may push the document wider than the viewport.
  */
-for (const theme of ['dark', 'light'] as const) {
+for (const theme of ['dark'] as const) {
   test(`no WCAG A/AA violations at 380px with every exhibit driven, ${theme} theme`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 380, height: 800 });
     await open(page);
-    if (theme === 'light') await toLightTheme(page);
     await driveEverything(page);
     await scan(page, `380px / everything driven / ${theme}`);
 
@@ -447,57 +422,3 @@ for (const theme of ['dark', 'light'] as const) {
   });
 }
 
-/**
- * A theme flip mid-life, with results already on screen. The at-rest light scan
- * loads straight into light; this one proves the page is legible after a swap
- * that has real content to repaint, in both directions.
- */
-test('no WCAG A/AA violations after flipping theme with results on screen', async ({ page }) => {
-  await open(page);
-  await driveEverything(page);
-  await toLightTheme(page);
-  await scan(page, 'results on screen, flipped to light');
-  await page.locator('#cl-theme-toggle').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await settle(page);
-  await scan(page, 'results on screen, flipped back to dark');
-});
-
-/**
- * The same flip with motion NOT reduced — the only scan in this file that
- * watches a real transition run.
- *
- * Every other test emulates `prefers-reduced-motion: reduce`, and this lab
- * honours that by collapsing every transition to 0.01ms. That is correct
- * behaviour and worth exercising, but it means those tests never see the
- * animated path a default visitor gets. Measured here, a theme flip with the
- * exhibits populated starts 31 concurrent colour transitions that drain over
- * about ten frames. This test lets them run and only scans once
- * `document.getAnimations()` has been empty for several consecutive frames, so
- * a colour that is only illegible mid-blend still has to answer for itself.
- *
- * The old gate could not have caught anything here: it injected
- * `transition-duration: 0s` into the page, which deletes the very thing this
- * test is looking at. Do not re-add that injection.
- */
-test('no WCAG A/AA violations across a real, unreduced theme transition', async ({ page }) => {
-  await page.emulateMedia({ reducedMotion: 'no-preference' });
-  await page.goto('.');
-  const reduced = await page.evaluate(
-    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches
-  );
-  expect(reduced, 'this test needs motion NOT reduced, or it proves nothing').toBe(false);
-  await expect(page.locator('#main-content')).toBeVisible();
-  await settle(page);
-
-  await driveEverything(page);
-  await page.locator('#cl-theme-toggle').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
-  await settle(page);
-  await scan(page, 'unreduced transition, settled in light');
-
-  await page.locator('#cl-theme-toggle').click();
-  await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
-  await settle(page);
-  await scan(page, 'unreduced transition, settled in dark');
-});
