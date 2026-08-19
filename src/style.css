@@ -5,7 +5,7 @@
   --paper: #0b1020;
   --card: #111827;
   --line: #334155;
-  /* Control boundaries only (buttons, text inputs, theme toggle). Those controls
+  /* Control boundaries only (buttons, text inputs). Those controls
      are filled with --surface-1, which sits at 1.01:1 (dark) / 1.05:1 (light)
      against the --card exhibit behind them, so the border is the sole boundary
      and WCAG 2.1 SC 1.4.11 requires 3:1. --line stays as-is for decorative rules
@@ -423,31 +423,6 @@ code {
   border-radius: 12px;
   padding: 1.4rem;
   background-color: var(--card);
-}
-
-/* --- Theme toggle --- */
-.theme-toggle {
-  position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 2.75rem;
-  height: 2.75rem;
-  min-height: 2.75rem;
-  border-radius: 50%;
-  border: 1px solid var(--line-strong);
-  background-color: var(--surface-1);
-  color: var(--ink);
-  cursor: pointer;
-  z-index: 10;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.1rem;
-  padding: 0;
-}
-
-.theme-toggle:hover {
-  background-color: var(--surface-2);
 }
 
 /* --- Controls --- */
@@ -921,11 +896,6 @@ html[data-theme='dark'] .hv-key-c2 {
   td {
     padding: 0.4rem 0.35rem;
     font-size: 0.82rem;
-  }
-
-  .theme-toggle {
-    top: 0.6rem;
-    right: 0.6rem;
   }
 }
 

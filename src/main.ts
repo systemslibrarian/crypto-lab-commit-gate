@@ -271,7 +271,6 @@ const render = (announceText?: string): void => {
   app.innerHTML = `
     <main class="shell" id="main-content">
       <header class="hero">
-        <button id="theme-toggle" class="theme-toggle" type="button" aria-label="Switch to light mode"></button>
         <div class="cl-hero">
           <div class="cl-hero-main">
             <h1 class="cl-hero-title">Commitment Schemes</h1>
@@ -505,7 +504,6 @@ const render = (announceText?: string): void => {
     </main>
   `;
 
-  initThemeToggle();
   bindEvents();
 
   if (activeId) {
@@ -514,30 +512,6 @@ const render = (announceText?: string): void => {
   if (announceText) {
     announce(announceText);
   }
-};
-
-const initThemeToggle = (): void => {
-  const root = document.documentElement;
-  const button = document.querySelector<HTMLButtonElement>('#theme-toggle');
-  if (!button) {
-    return;
-  }
-
-  const applyState = (): void => {
-    const isDark = (root.getAttribute('data-theme') ?? 'dark') === 'dark';
-    button.textContent = isDark ? '🌙' : '☀️';
-    button.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-  };
-
-  button.addEventListener('click', () => {
-    const current = (root.getAttribute('data-theme') ?? 'dark') === 'dark' ? 'dark' : 'light';
-    const next = current === 'dark' ? 'light' : 'dark';
-    root.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    applyState();
-  });
-
-  applyState();
 };
 
 const bindEvents = (): void => {

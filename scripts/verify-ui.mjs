@@ -101,15 +101,18 @@ const announcerOutsideApp = await page.evaluate(() => {
 });
 check('A11y live-region announcer present outside #app', announcerOutsideApp);
 
-// --- Theme toggle ---
-const beforeTheme = await page.getAttribute('html', 'data-theme');
-await page.click('#theme-toggle');
-const afterTheme = await page.getAttribute('html', 'data-theme');
-check('theme toggle switches mode', beforeTheme !== afterTheme, `${beforeTheme} -> ${afterTheme}`);
+// --- Theme: dark is the only one, pinned before first paint, no way to leave it.
+// This used to click #theme-toggle and assert the theme changed. That button and
+// its handler are gone, so what is left to check is that the pin holds.
+const theme = await page.getAttribute('html', 'data-theme');
+check('theme pinned to dark', theme === 'dark', String(theme));
+check(
+  'no theme control renders',
+  (await page.locator('#theme-toggle, #themeToggle, .theme-toggle, .theme-toggle-btn, [data-theme-toggle]')
+    .count()) === 0
+);
 
-// Screenshots: light (current), dark, mobile
-await page.screenshot({ path: `${OUT}/desktop-light.png`, fullPage: true });
-await page.click('#theme-toggle'); // back to dark
+// Screenshots: desktop, mobile
 await page.screenshot({ path: `${OUT}/desktop-dark.png`, fullPage: true });
 await page.setViewportSize({ width: 390, height: 844 });
 await page.screenshot({ path: `${OUT}/mobile-dark.png`, fullPage: true });

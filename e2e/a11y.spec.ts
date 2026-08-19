@@ -46,9 +46,8 @@ const INCOMPLETE_IS_FAILURE = /^(color-contrast|aria-)/;
  * The two places axe's abstention is a limit of axe rather than a hidden
  * failure, and the gate lets it through:
  *
- *  - `nonBmp`: the element's text is a single symbol glyph (the ☀/☾ on the theme
- *    toggle, the → between flow steps) and axe cannot tell a glyph from an icon
- *    font;
+ *  - `nonBmp`: the element's text is a single symbol glyph (the → between flow
+ *    steps) and axe cannot tell a glyph from an icon font;
  *  - anything inside an <svg>: the Exhibit 4 diagram's labels sit on a canvas
  *    axe cannot resolve a background for, so it reports `imgNode`/`bgOverlap`
  *    for every one of them no matter what colour they are.
