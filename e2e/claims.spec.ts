@@ -141,7 +141,7 @@ test('Exhibit 1 rejects an opening to a different message, and says why', async 
   // The failure must explain itself with both concrete values, not just fail.
   const detail = await detailOf(verdict);
   expect(detail).toContain('You committed "42" but tried to open "99"');
-  expect(detail).toContain('A different message hashes to a different C');
+  expect(detail).toContain('Here the changed message hashes to a different C');
   expect(detail).toContain('binding');
 
   const rows = await rowsOf(verdict);
@@ -561,7 +561,7 @@ test('Exhibit 5 seals every bid, then reveals the true winner', async ({ page })
       await e5.locator(`#e5-bid-${who}`).fill(amount);
     }
     await e5.locator('#e5-commit').click();
-    await expect(verdictOf(page, 5)).toContainText('sealed and published simultaneously');
+    await expect(verdictOf(page, 5)).toContainText('sealed before reveal');
 
     // One table row per bidder input — the table claims the whole field.
     const bidderCount = await e5.locator('input[id^="e5-bid-"]').count();

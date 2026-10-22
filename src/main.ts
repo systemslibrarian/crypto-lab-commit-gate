@@ -203,7 +203,7 @@ const renderBindingMeter = (tries: number): string => {
   return `
     <div class="binding-meter" role="group" aria-label="Binding search progress against a 2 to the 128 search space">
       <div class="meter-head">
-        <span>Fraction of the ~2¹²⁸ collision search covered so far</span>
+        <span>Attempts relative to the ~2¹²⁸ generic collision-work benchmark</span>
         <span class="mono meter-frac">0.${zeros}…%</span>
       </div>
       <div class="meter-track" aria-hidden="true">
@@ -211,10 +211,10 @@ const renderBindingMeter = (tries: number): string => {
       </div>
       <p class="meter-note">
         You have tried <strong class="mono">${tries.toLocaleString()}</strong> of roughly
-        <strong class="mono">2¹²⁸ ≈ 3.4 × 10³⁸</strong> needed for a birthday collision. Even at a
+        <strong class="mono">2¹²⁸ ≈ 3.4 × 10³⁸</strong> needed for a generic birthday collision. Even at a
         billion hashes per second, exhausting that space takes about
         <strong class="mono">10${toSup(yearsExp)}</strong> years — far longer than the age of the
-        universe. That gap, not your batch of tries, is what makes SHA-256 binding.
+        universe. That gap illustrates the collision-resistance assumption; your batch of tries does not prove it.
       </p>
     </div>`;
 };
@@ -370,9 +370,9 @@ const render = (announceText?: string): void => {
           that produce the <em>same</em> commitment. Both are yours to choose, so this is a <strong>collision</strong> search, not a
           hunt for a second preimage of one fixed commitment, and the birthday bound puts it at ≈ 2¹²⁸ hashes for a 256-bit hash.
           Go ahead and <strong>try</strong>: each click hashes a fresh batch of alternatives against one sealed commitment — the
-          naive way in, and a strictly harder one. It will always fail — but the point is not the failure, it is <em>how little of
+          naive way in, and a strictly harder one. You should expect it to fail — but the point is <em>how little of
           the search space you have covered</em>. The meter below is anchored to that ≈ 2¹²⁸ collision bound, so a few thousand
-          tries is not evidence of binding; the size of that number is.
+          tries is not evidence of binding; security depends on the collision-resistance assumption for SHA-256.
         </p>
         <p class="equation">find (m, r) ≠ (m′, r′) such that SHA-256(r ‖ m) = SHA-256(r′ ‖ m′)</p>
         <div class="button-row">
@@ -385,8 +385,8 @@ const render = (announceText?: string): void => {
       <section class="exhibit" aria-labelledby="exhibit-3-heading">
         <h2 id="exhibit-3-heading">Exhibit 3 — Hiding (and How It Breaks)</h2>
         <p>
-          A good commitment reveals nothing before opening. Two commitments to different values should look
-          statistically identical. Below: commit to <code>0</code> and <code>1</code> many times and measure
+          A commitment should keep its value hidden before opening under its stated assumptions. Below:
+          commit to <code>0</code> and <code>1</code> many times and measure
           whether an observer could tell them apart.
         </p>
         <p class="equation">C(0) ≈ᶜ C(1) &nbsp;—&nbsp; computationally indistinguishable to a bounded observer</p>
@@ -420,7 +420,7 @@ const render = (announceText?: string): void => {
       <section class="exhibit" aria-labelledby="exhibit-4-heading">
         <h2 id="exhibit-4-heading">Exhibit 4 — Pedersen &amp; the Homomorphic Superpower</h2>
         <p>
-          Pedersen commitments live on the P-256 curve: <code>C = r·G + m·H</code> (real point arithmetic, computed
+          Pedersen commitments live on the P-256 curve: <code>C = r·G + m·H</code> (finite-field point arithmetic, computed
           live). Their magic: you can <strong>add commitments without opening them</strong>, and the sum opens to the
           sum of the values. This underpins private tallies, MPC, and range proofs.
         </p>
@@ -595,7 +595,7 @@ const bindEvents = (): void => {
     state.e1Verdict = {
       kind: 'info',
       headline: 'Sealed. Commitment published to Bob.',
-      detail: 'Bob now holds C but learns nothing about m. Open honestly to verify — or change the revealed message to try to cheat.',
+      detail: 'Bob now holds C; a fresh secret salt keeps testing candidate messages infeasible for a bounded attacker. Open honestly to verify — or change the revealed message to try to cheat.',
       rows: [
         ['Committed m', message],
         ['Blinding r', truncate(state.hashOpen.blindingHex, 40)],
@@ -629,7 +629,7 @@ const bindEvents = (): void => {
           kind: 'fail',
           headline: tampered ? 'Bob rejects — cheating detected.' : 'Bob rejects the opening.',
           detail: tampered
-            ? `You committed "${state.hashOpen.message}" but tried to open "${revealed}". A different message hashes to a different C, so verification fails. This is binding in action: Alice is locked to her original value.`
+            ? `You committed "${state.hashOpen.message}" but tried to open "${revealed}". Here the changed message hashes to a different C, so verification fails. This illustrates computational binding; finding an alternate valid opening is assumed hard.`
             : 'The recomputed commitment does not match C.',
           rows: [
             ['Committed m', state.hashOpen.message],
@@ -652,7 +652,7 @@ const bindEvents = (): void => {
         : `Still no colliding opening (${state.e2Tries.toLocaleString()} tried so far).`,
       detail: run.foundCollision
         ? 'A second opening produced the same commitment.'
-        : 'This failure is NOT the proof — you have barely dented the search space (see the meter above). Binding holds because even the cheapest break — any two openings that collide — needs ≈ 2¹²⁸ hashes, not because a few thousand tries missed. Click again to watch the fraction covered stay effectively zero.',
+        : 'This failure is NOT the proof — you have barely dented the search space (see the meter above). Under the SHA-256 collision-resistance assumption, the generic search for any two colliding openings takes ≈ 2¹²⁸ hashes. This particular fixed-commitment search is harder. Click again to watch the fraction covered stay effectively zero.',
       rows: [
         ['Fixed commitment', truncate(run.originalCommitmentHex, 40)],
         ['Total messages tried', state.e2Tries.toLocaleString()],
@@ -798,8 +798,8 @@ const bindEvents = (): void => {
     state.auctionRevealed = false;
     state.auctionVerdict = {
       kind: 'info',
-      headline: 'All three bids are sealed and published simultaneously.',
-      detail: 'Each bid is hidden behind its own commitment. No bidder can see another\'s number, and none can change their own. Reveal to verify and find the winner.'
+      headline: 'All three bids are sealed before reveal.',
+      detail: 'Each bid is hidden behind its own commitment under the hash and fresh-salt assumptions. The bids cannot be changed after commitment; reveal to verify and find the winner.'
     };
     render(state.auctionVerdict.headline);
   });
