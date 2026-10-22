@@ -16,6 +16,7 @@ import {
   verifyPedersenOpening
 } from './pedersen';
 import { renderHomomorphismSvg } from './homomorphism-viz';
+import { coinOutcome, selectiveAbortCases } from './coinflip';
 
 const app = document.querySelector<HTMLDivElement>('#app');
 if (!app) {
@@ -67,6 +68,12 @@ type AuctionEntry = {
   commitmentHex: string;
 };
 
+type CoinCommitment = {
+  bob: 0 | 1;
+  blindingHex: string;
+  commitmentHex: string;
+};
+
 type State = {
   hashOpen: HashOpenState | null;
   e1Verdict: Verdict;
@@ -83,6 +90,11 @@ type State = {
   auctionCommitted: AuctionEntry[];
   auctionRevealed: boolean;
   auctionVerdict: Verdict;
+  coinCommitment: CoinCommitment | null;
+  aliceBit: 0 | 1 | null;
+  coinResolved: boolean;
+  coinVerdict: Verdict;
+  coinTally: { zero: number; one: number; abort: number; rejected: number };
 };
 
 const pending = (headline: string): Verdict => ({ kind: 'pending', headline });
@@ -102,7 +114,12 @@ const state: State = {
   hidingContrast: null,
   auctionCommitted: [],
   auctionRevealed: false,
-  auctionVerdict: pending('All bidders commit first; no one can change a bid after seeing the others.')
+  auctionVerdict: pending('All bidders commit first; no one can change a bid after seeing the others.'),
+  coinCommitment: null,
+  aliceBit: null,
+  coinResolved: false,
+  coinVerdict: pending('Commit Bob’s bit before Alice chooses hers.'),
+  coinTally: { zero: 0, one: 0, abort: 0, rejected: 0 }
 };
 
 const escapeHtml = (unsafe: string): string =>
@@ -164,7 +181,7 @@ const renderBiasViz = (viz: { zero: number; one: number } | null): string => {
     <figure class="bias-viz" aria-label="Frequency that the first output byte is odd, for commitments to 0 versus 1">
       ${bar('0', viz.zero)}
       ${bar('1', viz.one)}
-      <figcaption>This samples one bit (the low bit of C's first byte). Near-equal bars mean that statistic reveals nothing about the committed value; a full commitment leaks nothing across all 256 bits.</figcaption>
+      <figcaption>This samples one bit (the low bit of C's first byte). Near-equal bars are consistent with hiding, but one statistic in a finite sample cannot prove the full commitment hides the message.</figcaption>
     </figure>`;
 };
 
@@ -225,14 +242,14 @@ const renderHidingContrast = (mode: 'normal' | 'infinite' | null): string => {
           <p class="contrast-title">SHA-256 hash commitment</p>
           <p class="contrast-kind">Computational hiding</p>
           <p class="contrast-body">
-            Hidden only because inverting SHA-256 is hard. The value <em>is</em> pinned
-            down by <code>C</code> — there is exactly one <code>(m, r)</code> behind a
-            typical hash. Secrecy rests on the attacker not having enough compute to find it.
+            With a fresh secret 256-bit salt, testing candidate openings is infeasible
+            for a bounded attacker. Hash collisions and alternate openings can exist;
+            the digest does not identify a unique original message.
           </p>
           <p class="contrast-status">
             <span class="contrast-badge ${infinite ? 'badge-broken' : 'badge-safe'}" aria-hidden="true">${infinite ? '✕' : '✓'}</span>
             <span>${infinite
-              ? 'Against UNLIMITED compute: broken in principle — the attacker inverts the hash and reads m.'
+              ? 'Against UNLIMITED compute: no unconditional hiding guarantee — candidates can be enumerated, but a matching opening need not be the original.'
               : 'Against a real (bounded) attacker: safe — inverting SHA-256 is infeasible.'}</span>
           </p>
         </div>
@@ -259,7 +276,7 @@ const renderHidingContrast = (mode: 'normal' | 'infinite' | null): string => {
         </button>
       </div>
       <p class="hint">${infinite
-        ? 'With unbounded compute the hash commitment falls (its secrecy was only computational), while Pedersen still leaks nothing — that is the practical meaning of information-theoretic hiding.'
+        ? 'With unbounded compute, the hash construction has no general perfect-hiding guarantee; enumeration of candidate openings does not uniquely reveal the original. Pedersen remains perfectly hiding with a uniform scalar.'
         : 'Toggle to simulate an attacker with unlimited computation and see which primitive still hides.'}</p>
     </div>`;
 };
@@ -296,14 +313,14 @@ const render = (announceText?: string): void => {
             <span class="flow-step"><span class="flow-num">4</span> Verify</span>
           </div>
           <div class="primer-props">
-            <p><strong>Binding</strong> — once committed, you cannot open <code>C</code> to a different value than the one you sealed.</p>
-            <p><strong>Hiding</strong> — before you open, <code>C</code> leaks nothing about the value inside.</p>
+            <p><strong>Binding</strong> — finding a different valid opening is computationally hard in these schemes.</p>
+            <p><strong>Hiding</strong> — before you open, the commitment should keep the message secret under its stated assumptions.</p>
           </div>
           <dl class="legend">
             <div><dt class="mono">m</dt><dd>the message you commit to</dd></div>
             <div><dt class="mono">r</dt><dd>random blinding factor (the secret salt)</dd></div>
             <div><dt class="mono">C</dt><dd>the published commitment</dd></div>
-            <div><dt class="mono">G, H</dt><dd>independent curve generators (Pedersen)</dd></div>
+            <div><dt class="mono">G, H</dt><dd>curve points with no known discrete-log relation (Pedersen)</dd></div>
           </dl>
         </div>
       </header>
@@ -372,7 +389,7 @@ const render = (announceText?: string): void => {
           statistically identical. Below: commit to <code>0</code> and <code>1</code> many times and measure
           whether an observer could tell them apart.
         </p>
-        <p class="equation">C(0) ≈ᵈ C(1) &nbsp;—&nbsp; indistinguishable to any observer</p>
+        <p class="equation">C(0) ≈ᶜ C(1) &nbsp;—&nbsp; computationally indistinguishable to a bounded observer</p>
         <div class="button-row">
           <button id="e3-run" type="button">Run indistinguishability test</button>
         </div>
@@ -415,8 +432,10 @@ const render = (announceText?: string): void => {
             If a committer knew a scalar <code>s</code> with <code>H = s·G</code>, then
             <code>C = r·G + m·H = (r + s·m)·G</code>, and they could open the same <code>C</code> to a second
             message <code>m′</code> by picking <code>r′ = r + s·(m − m′)</code> — binding would be broken.
-            To avoid that, this demo derives <code>H</code> by <strong>hash-to-curve</strong> (try-and-increment on
-            P-256), so <code>log_G(H)</code> is unknown to everyone, including us.
+            This demo derives <code>H</code> from a public hash label rather than a known scalar.
+            The relation <code>H = s·G</code> exists mathematically on this prime-order curve, but finding
+            <code>s</code> is assumed hard. The try-and-increment teaching method is not the RFC 9380
+            hash-to-curve suite; do not use this implementation in production.
           </p>
         </div>
         <div class="controls-grid">
@@ -440,7 +459,8 @@ const render = (announceText?: string): void => {
         <h2 id="exhibit-5-heading">Exhibit 5 — Sealed-Bid Auction</h2>
         <p>
           Commitments make fair auctions possible. Every bidder publishes a commitment <em>first</em>; only then does
-          everyone reveal. Because of binding, no one can lower or raise their bid after seeing the others.
+          everyone reveal. Binding stops a bidder changing a committed bid, but a bidder may refuse to open;
+          a real auction needs explicit non-reveal rules and deadlines.
         </p>
         <div class="controls-grid">
           <label for="e5-bid-alice">Alice bid
@@ -478,6 +498,47 @@ const render = (announceText?: string): void => {
           </table>
         </div>
         ${renderVerdict(state.auctionVerdict)}
+
+        <hr class="exhibit-divider" />
+        <h3>Coin flip: a committed bit can still be withheld</h3>
+        <p>Bob commits to bit <code>b</code>, Alice chooses <code>a</code> after the commitment, then Bob opens.
+          The result is <code>a ⊕ b</code>. If Bob dislikes the result, he can refuse to reveal. Such an abort
+          must be recorded; it is not a successful flip. Choose both bits to inspect all four cases.</p>
+        <div class="controls-grid">
+          <label for="coin-bob">Bob’s bit, chosen before committing
+            <select id="coin-bob" ${state.coinCommitment ? 'disabled' : ''}>
+              <option value="0">0</option><option value="1">1</option>
+            </select>
+          </label>
+        </div>
+        <div class="button-row">${state.coinCommitment
+          ? '<button id="coin-reset" type="button">Start another round</button>'
+          : '<button id="coin-commit" type="button">1. Bob commits</button>'}</div>
+        ${state.coinCommitment ? `<p class="mono">Published SHA-256 commitment: ${escapeHtml(truncate(state.coinCommitment.commitmentHex, 40))}</p>
+          <p>Bob’s bit is sealed. Alice can now choose hers.</p>
+          ${!state.coinResolved ? `<div class="button-row">
+            <button id="coin-alice-0" type="button">2. Alice chooses 0</button>
+            <button id="coin-alice-1" type="button">2. Alice chooses 1</button>
+          </div>` : ''}` : ''}
+        ${state.aliceBit !== null ? `<p>Alice chose ${state.aliceBit}.</p>
+          ${!state.coinResolved ? `<p>Bob can open, try changing his bit, or selectively withhold.</p>
+          <div class="button-row">
+            <button id="coin-honest" type="button">3. Open honestly</button>
+            <button id="coin-change" type="button">3. Try a changed bit</button>
+            <button id="coin-selective" type="button">3. Open only if result is 0</button>
+          </div>` : ''}` : ''}
+        ${renderVerdict(state.coinVerdict)}
+        <p>Recorded rounds: result 0 = ${state.coinTally.zero}; result 1 = ${state.coinTally.one};
+          aborted = ${state.coinTally.abort}; rejected openings = ${state.coinTally.rejected}.</p>
+        <div class="table-wrap" role="region" aria-label="All bit pairs under selective abort" tabindex="0">
+          <table><caption>All four possible bit pairs if Bob reveals only result 0</caption>
+            <thead><tr><th scope="col">Bob</th><th scope="col">Alice</th><th scope="col">Honest result</th><th scope="col">Selective action</th></tr></thead>
+            <tbody>${selectiveAbortCases().map((item) => `<tr><td>${item.bob}</td><td>${item.alice}</td><td>${item.honestOutcome}</td><td>${item.selectiveOutcome === null ? 'Abort' : 'Open: 0'}</td></tr>`).join('')}</tbody>
+          </table>
+        </div>
+        <p class="hint">Only completed rounds show 0 under that strategy; half of the four equally likely bit pairs abort when both choices are uniform and independent.
+          The commit does not force participation through reveal. For fairness, a protocol must decide what an
+          abort means; simply rerunning until Bob likes the result biases accepted outcomes.</p>
       </section>
 
       <section class="exhibit" aria-labelledby="exhibit-6-heading">
@@ -501,6 +562,11 @@ const render = (announceText?: string): void => {
           </a>
         </nav>
       </section>
+      <aside class="exhibit" aria-label="Sources and implementation limits">
+        <h2>Sources and limits</h2>
+        <p><a href="https://crypto.stanford.edu/~dabo/cryptobook/" target="_blank" rel="noreferrer">Boneh and Shoup, <cite>A Graduate Course in Applied Cryptography</cite>, version 0.6 (2023), §3.12</a> discusses commitment-based coin flipping and aborts. <a href="https://www.rfc-editor.org/rfc/rfc9380.html" target="_blank" rel="noreferrer">RFC 9380 (2023)</a> explains why try-and-increment is not a recommended production hash-to-curve method.</p>
+        <p>This is educational P-256 arithmetic. Pedersen’s perfect hiding assumes a uniformly random blinding scalar; binding assumes computing the discrete-log relation is hard. The browser implementation has not been audited.</p>
+      </aside>
     </main>
   `;
 
@@ -611,9 +677,9 @@ const bindEvents = (): void => {
     state.e3Hiding = {
       kind: indistinguishable ? 'ok' : 'info',
       headline: indistinguishable
-        ? 'Indistinguishable — an observer cannot tell 0 from 1.'
+        ? 'These one-bit samples look similar.'
         : 'Sampling noise this run; rerun for a tighter result.',
-      detail: `Across ${stats.samples} fresh commitments each, the chance the last bit is 1 was ${(stats.bit1BiasZero * 100).toFixed(1)}% for m=0 and ${(stats.bit1BiasOne * 100).toFixed(1)}% for m=1. The gap of ${(stats.absBiasDelta * 100).toFixed(1)}% is statistical noise — the blinding factor r scrambles C so the value inside leaks nothing.`,
+      detail: `Across ${stats.samples} fresh commitments each, the chance the first output byte's low bit is 1 was ${(stats.bit1BiasZero * 100).toFixed(1)}% for m=0 and ${(stats.bit1BiasOne * 100).toFixed(1)}% for m=1. The observed gap is ${(stats.absBiasDelta * 100).toFixed(1)}%. One bit and a finite sample cannot establish that all commitments hide their messages.`,
       rows: [
         ['A sample C(0)', truncate(bytesToHex(c0), 40)],
         ['A sample C(1)', truncate(bytesToHex(c1), 40)],
@@ -627,7 +693,7 @@ const bindEvents = (): void => {
     state.hidingContrast = state.hidingContrast === 'infinite' ? 'normal' : 'infinite';
     render(
       state.hidingContrast === 'infinite'
-        ? 'Infinite-compute attacker: the hash commitment is broken in principle; Pedersen still hides perfectly.'
+        ? 'Unbounded attacker: hash commitments have no general perfect-hiding guarantee; uniform Pedersen commitments remain perfectly hiding.'
         : 'Bounded attacker restored: both commitments hide.'
     );
   });
@@ -680,7 +746,7 @@ const bindEvents = (): void => {
       kind: ok ? 'ok' : 'fail',
       headline: ok ? `Opened m₁ = ${m} and the point checks out.` : 'Opening failed.',
       detail: ok
-        ? 'Bob recomputes r·G + m·H from the revealed scalars and gets exactly the published point. Binding holds because log_G(H) is unknown (H is hash-to-curve, not a multiple of G) — so no second opening exists.'
+        ? 'Bob recomputes r·G + m·H from the revealed scalars and gets the published point. H is mathematically a multiple of G, but finding its scalar relation is assumed hard. Other mathematical openings exist; constructing one for a different message would break computational binding.'
         : 'The recomputed curve point did not match.',
       rows: [
         ['Commitment C', truncate(pointToHex(commit.commitment), 56)],
@@ -766,10 +832,78 @@ const bindEvents = (): void => {
     state.auctionVerdict = {
       kind: 'ok',
       headline: `Winner: ${winner.bidder} with a bid of ${winner.bid}.`,
-      detail: 'Every opening matched its commitment, so all bids are provably the ones sealed before the reveal. Commit-then-reveal removes any last-look advantage.'
+      detail: 'Every opening matched its commitment, so the revealed bids match the sealed ones. The commitments stop bid changes, but this toy assumes everyone reveals; withholding still needs a policy.'
     };
     render(state.auctionVerdict.headline);
   });
+
+  /* --- Exhibit 5: commit-based coin flip and selective abort --- */
+  document.querySelector<HTMLButtonElement>('#coin-commit')?.addEventListener('click', async () => {
+    const bob = Number(document.querySelector<HTMLSelectElement>('#coin-bob')?.value ?? '0') as 0 | 1;
+    const r = randomBlindingFactor();
+    const commitment = await commitHash(String(bob), r);
+    state.coinCommitment = { bob, blindingHex: bytesToHex(r), commitmentHex: bytesToHex(commitment) };
+    state.aliceBit = null;
+    state.coinResolved = false;
+    state.coinVerdict = { kind: 'info', headline: 'Bob published a commitment. Alice chooses next.', detail: 'Bob’s bit is sealed before Alice reveals her choice.' };
+    render(state.coinVerdict.headline);
+  });
+
+  document.querySelector<HTMLButtonElement>('#coin-reset')?.addEventListener('click', () => {
+    state.coinCommitment = null;
+    state.aliceBit = null;
+    state.coinResolved = false;
+    state.coinVerdict = pending('Choose a new bit for Bob, then publish its commitment.');
+    render('Ready for another round.');
+  });
+
+  for (const bit of [0, 1] as const) {
+    document.querySelector<HTMLButtonElement>(`#coin-alice-${bit}`)?.addEventListener('click', () => {
+      if (!state.coinCommitment || state.coinResolved) return;
+      state.aliceBit = bit;
+      state.coinVerdict = { kind: 'info', headline: `Alice chose ${bit}. Bob now decides whether to open.`, detail: 'Any changed opening will be checked against the commitment already published.' };
+      render(state.coinVerdict.headline);
+    });
+  }
+
+  const resolveCoin = async (action: 'honest' | 'change' | 'selective'): Promise<void> => {
+    const sealed = state.coinCommitment;
+    const alice = state.aliceBit;
+    if (!sealed || alice === null || state.coinResolved) return;
+    const honestResult = coinOutcome(sealed.bob, alice);
+    state.coinResolved = true;
+    if (action === 'selective' && honestResult === 1) {
+      state.coinTally.abort += 1;
+      state.coinVerdict = {
+        kind: 'fail',
+        headline: 'Bob withheld the opening: aborted round.',
+        detail: 'The committed bit would produce result 1, so Bob does not reveal it. Alice cannot verify or accept this as result 0. The abort is recorded separately.'
+      };
+    } else {
+      const revealedBit = action === 'change' ? (1 - sealed.bob) as 0 | 1 : sealed.bob;
+      const verified = await verifyHashOpening(String(revealedBit), hexToBytes(sealed.blindingHex), hexToBytes(sealed.commitmentHex));
+      if (!verified) {
+        state.coinTally.rejected += 1;
+        state.coinVerdict = {
+          kind: 'fail', headline: 'Changed opening rejected.',
+          detail: `Bob sealed ${sealed.bob} but tried to open ${revealedBit}. SHA-256 verification fails; no flipped result is accepted.`
+        };
+      } else {
+        state.coinTally[honestResult === 0 ? 'zero' : 'one'] += 1;
+        state.coinVerdict = {
+          kind: 'ok', headline: `Verified opening: ${alice} ⊕ ${revealedBit} = ${honestResult}.`,
+          detail: action === 'selective'
+            ? 'Bob revealed only because the honest result is 0. Repeated selective withholding biases completed rounds toward 0, while aborted rounds remain visible.'
+            : 'Bob opened the bit he sealed; Alice verifies the commitment before accepting the result.',
+          rows: [['Published C', truncate(sealed.commitmentHex, 40)], ['Revealed blinding r', truncate(sealed.blindingHex, 40)]]
+        };
+      }
+    }
+    render(state.coinVerdict.headline);
+  };
+  document.querySelector<HTMLButtonElement>('#coin-honest')?.addEventListener('click', () => void resolveCoin('honest'));
+  document.querySelector<HTMLButtonElement>('#coin-change')?.addEventListener('click', () => void resolveCoin('change'));
+  document.querySelector<HTMLButtonElement>('#coin-selective')?.addEventListener('click', () => void resolveCoin('selective'));
 };
 
 render();

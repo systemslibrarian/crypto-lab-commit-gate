@@ -5,7 +5,7 @@ import { chromium } from 'playwright';
 import { mkdirSync } from 'node:fs';
 
 const BASE = process.argv[2] ?? 'http://localhost:5176/crypto-lab-commit-gate/';
-const OUT = process.env.SHOT_DIR ?? 'C:/Users/gmcas/AppData/Local/Temp/commit-gate-shots';
+const OUT = process.env.SHOT_DIR ?? 'commit-gate-shots';
 mkdirSync(OUT, { recursive: true });
 
 const results = [];
@@ -23,7 +23,7 @@ page.on('pageerror', (e) => errors.push(String(e)));
 await page.goto(BASE, { waitUntil: 'networkidle' });
 
 // Hero renders
-check('hero h1 present', (await page.locator('h1').innerText()).includes('commit-gate'));
+check('hero h1 present', (await page.locator('h1').innerText()).includes('Commitment Schemes'));
 check('primer lifecycle present', await page.locator('.primer-flow').isVisible());
 
 const verdictText = async (sel) => (await page.locator(sel).locator('.verdict').last().innerText()).trim();
@@ -54,9 +54,9 @@ check('E1 cheat rejected', (await verdictKind('section[aria-labelledby="exhibit-
 await page.click('#e2-binding');
 await page.waitForFunction(() => {
   const k = document.querySelector('#exhibit-2-heading')?.closest('.exhibit')?.querySelector('.verdict')?.getAttribute('data-kind');
-  return k === 'ok' || k === 'fail';
+  return k === 'info' || k === 'fail';
 }, null, { timeout: 30000 });
-check('E2 binding holds (no collision)', (await verdictKind('section[aria-labelledby="exhibit-2-heading"]')) === 'ok');
+check('E2 bounded search did not find a collision', (await verdictKind('section[aria-labelledby="exhibit-2-heading"]')) === 'info');
 
 // --- Exhibit 3: hiding + bias bars ---
 await page.click('#e3-run');
@@ -91,8 +91,8 @@ await page.click('#e5-commit');
 await page.click('#e5-reveal');
 await page.waitForFunction(() =>
   document.querySelector('#exhibit-5-heading')?.closest('.exhibit')?.querySelector('.verdict')?.getAttribute('data-kind') === 'ok');
-const e5 = await verdictText('section[aria-labelledby="exhibit-5-heading"]');
-check('E5 auction winner Bob (31)', e5.includes('Bob') && e5.includes('31'), e5.split('\n')[0]);
+const auctionVerdict = await page.locator('section[aria-labelledby="exhibit-5-heading"] .verdict').first().innerText();
+check('E5 auction winner Bob (31)', auctionVerdict.includes('Bob') && auctionVerdict.includes('31'), auctionVerdict.split('\n')[0]);
 
 // --- A11y: persistent live region exists outside #app ---
 const announcerOutsideApp = await page.evaluate(() => {

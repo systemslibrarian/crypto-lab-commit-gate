@@ -441,11 +441,13 @@ label {
 }
 
 input,
+select,
 button {
   font: inherit;
 }
 
-input {
+input,
+select {
   min-height: 2.75rem;
   border-radius: 10px;
   border: 1px solid var(--line-strong);
@@ -453,6 +455,10 @@ input {
   color: var(--ink);
   padding: 0.5rem 0.65rem;
   width: 100%;
+}
+
+select:disabled {
+  opacity: 0.72;
 }
 
 .button-row {

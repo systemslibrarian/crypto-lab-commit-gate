@@ -103,12 +103,18 @@ const bytesToBigint = (bytes: Uint8Array): bigint => {
 	return BigInt(`0x${hex || '00'}`);
 };
 
-const randomScalar = (): bigint => {
-	const bytes = new Uint8Array(32);
+export const randomScalar = (
+	draw: (bytes: Uint8Array) => Uint8Array = (bytes) => crypto.getRandomValues(bytes)
+): bigint => {
 	while (true) {
-		crypto.getRandomValues(bytes);
-		const k = mod(bytesToBigint(bytes), N);
-		if (k !== 0n) {
+		const bytes = draw(new Uint8Array(32));
+		if (bytes.length !== 32) {
+			throw new Error('Scalar source must return 32 bytes');
+		}
+		const k = bytesToBigint(bytes);
+		// Reject out-of-range draws rather than reducing them modulo N. Every
+		// element of Z/NZ, including zero, must have the same probability.
+		if (k < N) {
 			return k;
 		}
 	}
@@ -141,21 +147,22 @@ const sqrtModP = (a: bigint): bigint | null => {
 };
 
 /*
- * Derive the second Pedersen generator H by HASH-TO-CURVE (try-and-increment),
- * NOT as a scalar multiple of G.
+ * Derive the second Pedersen generator H by a deterministic try-and-increment
+ * map rather than constructing it as s·G for a known scalar s. Because P-256
+ * has prime order, H mathematically IS a scalar multiple of G.
  *
  * WHY THIS MATTERS FOR BINDING: if H = s·G for a KNOWN scalar s, then a
  * committer knows log_G(H) = s and can open a single commitment to two
  * different messages:
  *     C = r·G + m·H = (r + s·m)·G
  * so any (m', r') with r' + s·m' = r + s·m opens the same C — binding is BROKEN.
- * Deriving H by hashing to a curve point makes log_G(H) unknown to everyone, so
- * finding such an (m', r') would require solving a discrete log. That unknown
- * relationship is exactly what makes Pedersen commitments binding.
+ * Binding assumes the scalar log_G(H) is unknown to the committer and hard to
+ * compute. This teaching derivation does not reveal that scalar, but it cannot
+ * prove that nobody knows it or replace a reviewed production hash-to-curve.
  *
  * Method: hash a domain-separated label to a field element x, try to solve the
  * curve equation y² = x³ + a·x + b for y; if x is not the abscissa of a curve
- * point, increment a counter and rehash. Nobody (including us) learns the
+ * point, increment a counter and rehash. The process does not compute the
  * discrete log of the resulting H base G.
  */
 const deriveH = async (): Promise<Point> => {
@@ -212,7 +219,7 @@ export const pointToHex = (p: EcPoint): string => {
 export const commitPedersen = async (message: bigint, blinding?: bigint): Promise<PedersenCommitment> => {
 	const { H } = await getGenerators();
 	const m = mod(message, N);
-	const r = blinding ? mod(blinding, N) : randomScalar();
+	const r = blinding === undefined ? randomScalar() : mod(blinding, N);
 	const mH = scalarMultiply(m, H);
 	const rG = scalarMultiply(r, G);
 	const commitment = pointAdd(rG, mH);
@@ -224,12 +231,16 @@ export const commitPedersen = async (message: bigint, blinding?: bigint): Promis
 	};
 };
 
+const pointEqual = (a: EcPoint, b: EcPoint): boolean => {
+	if (isInfinity(a) || isInfinity(b)) {
+		return isInfinity(a) && isInfinity(b);
+	}
+	return a.x === b.x && a.y === b.y;
+};
+
 export const verifyPedersenOpening = async (opening: PedersenCommitment): Promise<boolean> => {
 	const recalculated = await commitPedersen(opening.messageScalar, opening.blindingScalar);
-	if (isInfinity(opening.commitment) || isInfinity(recalculated.commitment)) {
-		return false;
-	}
-	return opening.commitment.x === recalculated.commitment.x && opening.commitment.y === recalculated.commitment.y;
+	return pointEqual(opening.commitment, recalculated.commitment);
 };
 
 export const addCommitments = (a: EcPoint, b: EcPoint): EcPoint => pointAdd(a, b);
@@ -252,11 +263,7 @@ export const verifyHomomorphicProperty = async (
 	const reopened = await commitPedersen(sumMessage, sumBlinding);
 	const right = reopened.commitment;
 
-	const ok =
-		!isInfinity(left) &&
-		!isInfinity(right) &&
-		left.x === right.x &&
-		left.y === right.y;
+	const ok = pointEqual(left, right);
 
 	return {
 		left,

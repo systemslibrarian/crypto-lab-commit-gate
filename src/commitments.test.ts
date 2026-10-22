@@ -15,9 +15,11 @@ import {
   commitPedersen,
   getGenerators,
   isOnCurve,
+  randomScalar,
   verifyHomomorphicProperty,
   verifyPedersenOpening
 } from './pedersen';
+import { coinOutcome, selectiveAbortCases } from './coinflip';
 
 describe('hash commitments', () => {
   it('is deterministic for a fixed message and blinding factor', async () => {
@@ -51,7 +53,7 @@ describe('hash commitments', () => {
     expect(run.tries).toBe(200);
   });
 
-  it('produces a near-zero indistinguishability gap between C(0) and C(1)', async () => {
+  it('samples one approximately balanced output bit for C(0) and C(1)', async () => {
     const stats = await runHidingStats(256);
     expect(stats.absBiasDelta).toBeLessThan(0.2);
   });
@@ -114,5 +116,55 @@ describe('pedersen commitments on P-256', () => {
     const summed = addCommitments(c1.commitment, c2.commitment);
     const homo = await verifyHomomorphicProperty(c1, c2);
     expect(homo.left).toEqual(summed);
+  });
+
+  it('preserves an explicit zero blinder and accepts the group identity as a valid point', async () => {
+    const identity = await commitPedersen(0n, 0n);
+    expect(identity.blindingScalar).toBe(0n);
+    expect(identity.commitment).toEqual({ inf: true });
+    expect(await verifyPedersenOpening(identity)).toBe(true);
+    const changed = { ...identity, messageScalar: 1n };
+    expect(await verifyPedersenOpening(changed)).toBe(false);
+
+    const a = await commitPedersen(12n, 8n);
+    const b = await commitPedersen(-12n, -8n);
+    const sum = await verifyHomomorphicProperty(a, b);
+    expect(sum.ok).toBe(true);
+    expect(sum.left).toEqual({ inf: true });
+    expect(sum.right).toEqual({ inf: true });
+  });
+
+  it('samples scalars by rejecting out-of-range bytes, including without rejecting zero', () => {
+    const order = BigInt('0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551');
+    const asBytes = (value: bigint) => Uint8Array.from(
+      (value.toString(16).padStart(64, '0').match(/../g) ?? []).map((pair) => Number.parseInt(pair, 16))
+    );
+    let calls = 0;
+    const selected = randomScalar(() => {
+      calls += 1;
+      return calls === 1 ? asBytes(order) : asBytes(0n);
+    });
+    expect(calls).toBe(2);
+    expect(selected).toBe(0n);
+    expect(randomScalar(() => asBytes(order - 1n))).toBe(order - 1n);
+  });
+});
+
+describe('commit-based coin flip', () => {
+  it('makes exactly half the equally likely bit pairs abort under a selective-reveal strategy', () => {
+    const cases = selectiveAbortCases();
+    expect(cases).toHaveLength(4);
+    expect(cases.map((row) => row.honestOutcome)).toEqual([0, 1, 1, 0]);
+    expect(cases.map((row) => row.selectiveOutcome)).toEqual([0, null, null, 0]);
+    for (const row of cases) {
+      expect(row.honestOutcome).toBe(coinOutcome(row.bob, row.alice));
+    }
+  });
+
+  it('verifies an honest bit but rejects changing that bit after Alice chooses', async () => {
+    const r = randomBlindingFactor();
+    const published = await commitHash('0', r);
+    expect(await verifyHashOpening('0', r, published)).toBe(true);
+    expect(await verifyHashOpening('1', r, published)).toBe(false);
   });
 });

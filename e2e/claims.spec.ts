@@ -293,7 +293,7 @@ test('Exhibit 3 bias bars, |Δ| row and verdict all describe the same sample', a
   // The prose repeats all three numbers; they must be the same three numbers.
   expect(detail).toContain(`was ${bars[0].value} for m=0 and ${bars[1].value} for m=1`);
   expect(detail).toContain(
-    `The gap of ${((Math.abs(zeroCount - oneCount) / samples) * 100).toFixed(1)}%`
+    `observed gap is ${((Math.abs(zeroCount - oneCount) / samples) * 100).toFixed(1)}%`
   );
 
   // The verdict must match its own threshold, whichever side of it this run lands on.
@@ -301,7 +301,7 @@ test('Exhibit 3 bias bars, |Δ| row and verdict all describe the same sample', a
   const headline = await headlineOf(verdict);
   if (delta < 0.1) {
     expect(kind).toBe('ok');
-    expect(headline).toBe('Indistinguishable — an observer cannot tell 0 from 1.');
+    expect(headline).toBe('These one-bit samples look similar.');
   } else {
     expect(kind).toBe('info');
     expect(headline).toBe('Sampling noise this run; rerun for a tighter result.');
@@ -316,7 +316,7 @@ test('Exhibit 3 bias bars, |Δ| row and verdict all describe the same sample', a
   expect(rows['A sample C(0)']).not.toBe(rows['A sample C(1)']);
 });
 
-test('Exhibit 3 infinite-compute attacker breaks hash hiding but not Pedersen', async ({
+test('Exhibit 3 distinguishes computational hash hiding from perfect Pedersen hiding', async ({
   page
 }) => {
   test.setTimeout(120_000);
@@ -347,7 +347,7 @@ test('Exhibit 3 infinite-compute attacker breaks hash hiding but not Pedersen', 
   await expect(hashCard).toHaveClass(/is-broken/);
   await expect(hashCard.locator('.contrast-badge')).toHaveClass(/badge-broken/);
   await expect(hashCard).toContainText(
-    'Against UNLIMITED compute: broken in principle — the attacker inverts the hash and reads m.'
+    'Against UNLIMITED compute: no unconditional hiding guarantee — candidates can be enumerated, but a matching opening need not be the original.'
   );
   // Pedersen must NOT break — that asymmetry is the whole lesson.
   await expect(pedersenCard).not.toHaveClass(/is-broken/);
@@ -356,7 +356,7 @@ test('Exhibit 3 infinite-compute attacker breaks hash hiding but not Pedersen', 
     'Against UNLIMITED compute: STILL perfectly hidden — no amount of computation helps.'
   );
   await expect(e3.locator('.hiding-contrast .hint')).toContainText(
-    'the hash commitment falls'
+    'enumeration of candidate openings does not uniquely reveal the original'
   );
 
   await toggle.click();
@@ -434,7 +434,7 @@ test('Exhibit 4 opens a Pedersen commitment to the message the user typed', asyn
   const verdict = verdictOf(page, 4, 0);
 
   // The README's binding claim must be stated on the page.
-  await expect(e4.locator('.callout-binding')).toContainText('hash-to-curve');
+  await expect(e4.locator('.callout-binding')).toContainText('prime-order curve');
   await expect(e4.locator('.callout-binding')).toContainText(
     'nobody may know the discrete log of'
   );
@@ -445,7 +445,7 @@ test('Exhibit 4 opens a Pedersen commitment to the message the user typed', asyn
 
   expect(await headlineOf(verdict)).toBe('Opened m₁ = 12 and the point checks out.');
   await expect(verdict).toHaveAttribute('data-kind', 'ok');
-  expect(await detailOf(verdict)).toContain('log_G(H) is unknown');
+  expect(await detailOf(verdict)).toContain('mathematically a multiple of G');
 
   let rows = await rowsOf(verdict);
   expect(rows['Message scalar m']).toBe('12');
@@ -539,7 +539,7 @@ type Row = { bidder: string; bid: string };
 
 const auctionRows = (page: Page): Promise<Row[]> =>
   exhibit(page, 5)
-    .locator('tbody tr')
+    .locator('.table-wrap').first().locator('tbody tr')
     .evaluateAll((trs) =>
       trs.map((tr) => ({
         bidder: (tr.children[0]?.textContent ?? '').trim(),
@@ -574,7 +574,7 @@ test('Exhibit 5 seals every bid, then reveals the true winner', async ({ page })
     }
     // Every commitment is distinct even when two bids are not.
     const commitments = await e5
-      .locator('tbody tr td.mono')
+      .locator('.table-wrap').first().locator('tbody tr td.mono')
       .evaluateAll((tds) => tds.map((td) => td.textContent?.trim() ?? ''));
     expect(new Set(commitments).size).toBe(bidderCount);
 
@@ -593,11 +593,52 @@ test('Exhibit 5 seals every bid, then reveals the true winner', async ({ page })
     await expect(v).toHaveAttribute('data-kind', 'ok');
     expect(await headlineOf(v)).toBe(`Winner: ${best.bidder} with a bid of ${best.bid}.`);
     expect(Math.max(...rows.map((r) => Number(r.bid)))).toBe(Number(best.bid));
-    expect(await detailOf(v)).toContain('removes any last-look advantage');
+    expect(await detailOf(v)).toContain('withholding still needs a policy');
   };
 
   await runAuction({ alice: '23', bob: '31', carol: '28' });
   // A different field must move the winner — the headline is not a fixed name.
   await runAuction({ alice: '5', bob: '9', carol: '40' });
   await runAuction({ alice: '77', bob: '9', carol: '40' });
+});
+
+test('Exhibit 5 records selective abort, rejects a changed opening, and verifies both outcomes', async ({ page }) => {
+  await page.goto('.');
+  const e5 = exhibit(page, 5);
+  const verdict = verdictOf(page, 5, 1);
+  const tally = e5.locator('p', { hasText: 'Recorded rounds:' });
+
+  await expect(e5.locator('table').last()).toContainText('Abort');
+  await e5.locator('#coin-commit').click(); // Bob sealed 0
+  await expect(e5.locator('#coin-bob')).toBeDisabled();
+  await e5.locator('#coin-alice-1').click();
+  await e5.locator('#coin-selective').click();
+  await expect(verdict).toContainText('aborted round');
+  await expect(tally).toContainText('aborted = 1');
+  await expect(tally).toContainText('result 0 = 0');
+
+  await e5.locator('#coin-reset').click();
+  await e5.locator('#coin-bob').selectOption('1');
+  await e5.locator('#coin-commit').click();
+  await e5.locator('#coin-alice-1').click();
+  await e5.locator('#coin-selective').click();
+  await expect(verdict).toContainText('Verified opening: 1 ⊕ 1 = 0.');
+  await expect(tally).toContainText('result 0 = 1');
+
+  await e5.locator('#coin-reset').click();
+  await e5.locator('#coin-bob').selectOption('1');
+  await e5.locator('#coin-commit').click();
+  await e5.locator('#coin-alice-0').click();
+  await e5.locator('#coin-change').click();
+  await expect(verdict).toContainText('Changed opening rejected.');
+  await expect(tally).toContainText('rejected openings = 1');
+
+  await e5.locator('#coin-reset').click();
+  await e5.locator('#coin-bob').selectOption('1');
+  await e5.locator('#coin-commit').click();
+  await e5.locator('#coin-alice-0').click();
+  await e5.locator('#coin-honest').click();
+  await expect(verdict).toContainText('Verified opening: 0 ⊕ 1 = 1.');
+  await expect(tally).toContainText('result 1 = 1');
+  await expect(page.getByRole('complementary', { name: 'Sources and implementation limits' })).toContainText('RFC 9380');
 });
