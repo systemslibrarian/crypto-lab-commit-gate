@@ -31,7 +31,9 @@ The demo walks through six exhibits. The commit/open exhibit lets you **reveal a
 
 - Dan Boneh and Victor Shoup, [*A Graduate Course in Applied Cryptography*, version 0.6 (2023), §3.12](https://crypto.stanford.edu/~dabo/cryptobook/) — commitment-based coin flipping and aborts.
 - [RFC 9380, *Hashing to Elliptic Curves* (August 2023)](https://www.rfc-editor.org/rfc/rfc9380.html) — production mapping and rejection of try-and-increment methods.
-- H. Lochbihler et al., [*On the Formalisation of Σ-Protocols and Commitment Schemes* (2019)](https://arxiv.org/abs/1705.05897) — perfect hiding and computational binding of Pedersen commitments.
+- Roberto Metere and Changyu Dong, [*Automated Cryptographic Analysis of the Pedersen Commitment Scheme* (2017)](https://arxiv.org/abs/1705.05897) — perfect hiding and computational binding of Pedersen commitments.
+
+**Sources reviewed 15 November 2026:** the entry above previously read "H. Lochbihler et al., *On the Formalisation of Σ-Protocols and Commitment Schemes* (2019)" over this same arXiv link, which combined three different papers. arXiv:1705.05897, submitted 16 May 2017, is Metere and Dong’s *Automated Cryptographic Analysis of the Pedersen Commitment Scheme*, whose abstract states that it proves correctness, perfect hiding and computational binding for Pedersen — the property cited here; it appeared in Springer LNCS, pp. 275–287 ([DOI 10.1007/978-3-319-65127-9_22](https://doi.org/10.1007/978-3-319-65127-9_22)). The discarded title belongs to Butler, Aspinall and Gascón, POST 2019, pp. 175–196 ([DOI 10.1007/978-3-030-17138-4_8](https://doi.org/10.1007/978-3-030-17138-4_8)), which does not list Lochbihler as an author.
 
 ## Real-World Usage
 - Zcash Sapling uses Pedersen commitments on Jubjub for its note commitments; Orchard replaced those with Sinsemilla commitments on Pallas, which is friendlier to Halo 2 lookups. Both still use homomorphic Pedersen commitments for the value commitments that let a circuit balance a transaction.
