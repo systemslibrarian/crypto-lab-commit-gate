@@ -3,6 +3,7 @@
 // sizes (WCAG 2.5.5 / 2.5.8). Usage: node scripts/verify-a11y.mjs [baseURL]
 import { chromium } from 'playwright';
 import AxeBuilder from '@axe-core/playwright';
+import { auditControlNames, formatControlNameFailures } from './control-names.mjs';
 
 const BASE = process.argv[2] ?? 'http://localhost:5176/crypto-lab-commit-gate/';
 const TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'];
@@ -23,6 +24,10 @@ const audit = async (label, viewport, theme) => {
 
   const { violations } = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   totalViolations += violations.length;
+  // axe's `label` rule accepts a bare `placeholder` as an accessible name, so a
+  // deleted label can leave this audit clean. See `control-names.mjs`.
+  const unnamed = formatControlNameFailures(await auditControlNames(page));
+  totalViolations += unnamed.length;
   console.log(`\n=== ${label} (${viewport.width}x${viewport.height}, ${theme}) ===`);
   if (!violations.length) {
     console.log('  no WCAG 2.1 A/AA violations');
@@ -31,6 +36,11 @@ const audit = async (label, viewport, theme) => {
       console.log(`  [${v.impact}] ${v.id}: ${v.help} (${v.nodes.length} node(s))`);
       console.log(`     ${v.helpUrl}`);
     }
+  }
+  if (unnamed.length) {
+    for (const line of unnamed) console.log(`  [name] ${line}`);
+  } else {
+    console.log('  every form control has a real accessible name');
   }
   await context.close();
 };
