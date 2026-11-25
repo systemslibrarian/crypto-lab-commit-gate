@@ -642,3 +642,39 @@ test('Exhibit 5 records selective abort, rejects a changed opening, and verifies
   await expect(tally).toContainText('result 1 = 1');
   await expect(page.getByRole('complementary', { name: 'Sources and implementation limits' })).toContainText('RFC 9380');
 });
+
+test('auction preserves exact bids and reports all bidders tied for first', async ({ page }) => {
+  await page.goto('.');
+  const auction = exhibit(page, 5);
+  const fields = ['alice', 'bob', 'carol'].map(name => auction.locator('#e5-bid-' + name));
+  const publish = auction.locator('#e5-commit');
+  const reveal = auction.locator('#e5-reveal');
+  const verdict = verdictOf(page, 5);
+  const cells = auction.getByRole('region', { name: 'Auction results' }).locator('tbody tr td:last-child');
+  const bids = ['9007199254740993', '9007199254740993', '9007199254740992'];
+  for (const [i, field] of fields.entries()) await field.fill(bids[i]);
+  await publish.click();
+  await expect(verdict).toContainText('sealed before reveal');
+  await expect(fields[0]).toHaveValue(bids[0]);
+  await fields[1].fill('1');
+  await reveal.click();
+  await expect(verdict).toContainText('Tie for first place: Alice, Bob with a bid of ' + bids[0]);
+  await expect(cells).toHaveText(bids);
+  await expect(fields[1]).toHaveValue('1');
+
+  for (const bad of ['', '-1', '2.5', '2xyz']) {
+    await fields[0].fill(bad);
+    await publish.click();
+    await expect(verdict).toContainText('No new bids were published.');
+    await expect(verdict).toContainText('Alice');
+    await expect(cells).toHaveText(bids);
+    await reveal.click();
+    await expect(verdict).toContainText('Tie for first place: Alice, Bob');
+  }
+  for (const field of fields) await field.fill('0');
+  await publish.click();
+  await expect(verdict).toContainText('sealed before reveal');
+  await reveal.click();
+  await expect(verdict).toContainText('Tie for first place: Alice, Bob, Carol with a bid of 0 each.');
+  await expect(cells).toHaveText(['0', '0', '0']);
+});

@@ -61,9 +61,12 @@ type HashOpenState = {
   opened: boolean;
 };
 
+const AUCTION_BIDDERS = ['Alice', 'Bob', 'Carol'] as const;
+type Bidder = (typeof AUCTION_BIDDERS)[number];
+
 type AuctionEntry = {
-  bidder: string;
-  bid: number;
+  bidder: Bidder;
+  bid: bigint;
   blindingHex: string;
   commitmentHex: string;
 };
@@ -87,6 +90,8 @@ type State = {
   e4Homomorphic: Verdict;
   e4Viz: { m1: number; m2: number } | null;
   hidingContrast: 'normal' | 'infinite' | null;
+  auctionDrafts: Record<Bidder, string>;
+  auctionBusy: boolean;
   auctionCommitted: AuctionEntry[];
   auctionRevealed: boolean;
   auctionVerdict: Verdict;
@@ -112,6 +117,8 @@ const state: State = {
   e4Homomorphic: pending('Commit two values and check the homomorphic sum.'),
   e4Viz: null,
   hidingContrast: null,
+  auctionDrafts: { Alice: '23', Bob: '31', Carol: '28' },
+  auctionBusy: false,
   auctionCommitted: [],
   auctionRevealed: false,
   auctionVerdict: pending('All bidders commit first; no one can change a bid after seeing the others.'),
@@ -462,20 +469,17 @@ const render = (announceText?: string): void => {
           everyone reveal. Binding stops a bidder changing a committed bid, but a bidder may refuse to open;
           a real auction needs explicit non-reveal rules and deadlines.
         </p>
+        <p>Enter each bid in whole units using digits 0–9. These fields are drafts for the next publication.
+          Reveal checks the most recently published bids. Equal highest bids share first place.</p>
         <div class="controls-grid">
-          <label for="e5-bid-alice">Alice bid
-            <input id="e5-bid-alice" type="number" value="23" min="0" />
-          </label>
-          <label for="e5-bid-bob">Bob bid
-            <input id="e5-bid-bob" type="number" value="31" min="0" />
-          </label>
-          <label for="e5-bid-carol">Carol bid
-            <input id="e5-bid-carol" type="number" value="28" min="0" />
-          </label>
+          ${AUCTION_BIDDERS.map((name) => `
+            <label for="e5-bid-${name.toLowerCase()}">${name} bid
+              <input id="e5-bid-${name.toLowerCase()}" type="text" inputmode="numeric" pattern="[0-9]+" value="${escapeHtml(state.auctionDrafts[name])}" />
+            </label>`).join('')}
         </div>
         <div class="button-row">
-          <button id="e5-commit" type="button">1. Publish commitments</button>
-          <button id="e5-reveal" type="button">2. Reveal &amp; verify</button>
+          <button id="e5-commit" type="button" ${state.auctionBusy ? 'disabled' : ''}>1. Publish commitments</button>
+          <button id="e5-reveal" type="button" ${state.auctionBusy ? 'disabled' : ''}>2. Reveal &amp; verify</button>
         </div>
         <div class="table-wrap" role="region" aria-label="Auction results" tabindex="0">
           <table>
@@ -781,15 +785,39 @@ const bindEvents = (): void => {
   });
 
   /* --- Exhibit 5: auction --- */
-  document.querySelector<HTMLButtonElement>('#e5-commit')?.addEventListener('click', async () => {
-    const bids = [
-      ['Alice', Number.parseInt(document.querySelector<HTMLInputElement>('#e5-bid-alice')?.value ?? '0', 10)],
-      ['Bob', Number.parseInt(document.querySelector<HTMLInputElement>('#e5-bid-bob')?.value ?? '0', 10)],
-      ['Carol', Number.parseInt(document.querySelector<HTMLInputElement>('#e5-bid-carol')?.value ?? '0', 10)]
-    ] as const;
+  for (const name of AUCTION_BIDDERS) {
+    const input = document.querySelector<HTMLInputElement>(`#e5-bid-${name.toLowerCase()}`)!;
+    input.addEventListener('input', () => { state.auctionDrafts[name] = input.value; });
+  }
 
+  const withAuctionLock = async (action: () => Promise<void>): Promise<void> => {
+    if (state.auctionBusy) return;
+    state.auctionBusy = true;
+    for (const button of document.querySelectorAll<HTMLButtonElement>('#e5-commit, #e5-reveal')) button.disabled = true;
+    try {
+      await action();
+    } catch {
+      state.auctionRevealed = false;
+      state.auctionVerdict = { kind: 'fail', headline: 'The auction operation did not complete. Please retry.' };
+    } finally {
+      state.auctionBusy = false;
+      render(state.auctionVerdict.headline);
+    }
+  };
+
+  document.querySelector<HTMLButtonElement>('#e5-commit')?.addEventListener('click', () => withAuctionLock(async () => {
+    const drafts = { ...state.auctionDrafts };
+    const invalid = AUCTION_BIDDERS.filter((name) => !/^[0-9]+$/.test(drafts[name]));
+    if (invalid.length) {
+      state.auctionVerdict = {
+        kind: 'fail', headline: 'No new bids were published.',
+        detail: `Enter a non-negative whole number using digits 0–9 for ${invalid.join(', ')}.`
+      };
+      return;
+    }
     const committed: AuctionEntry[] = [];
-    for (const [bidder, bid] of bids) {
+    for (const bidder of AUCTION_BIDDERS) {
+      const bid = BigInt(drafts[bidder]);
       const r = randomBlindingFactor();
       const commitment = await commitHash(String(bid), r);
       committed.push({ bidder, bid, blindingHex: bytesToHex(r), commitmentHex: bytesToHex(commitment) });
@@ -801,13 +829,11 @@ const bindEvents = (): void => {
       headline: 'All three bids are sealed before reveal.',
       detail: 'Each bid is hidden behind its own commitment under the hash and fresh-salt assumptions. The bids cannot be changed after commitment; reveal to verify and find the winner.'
     };
-    render(state.auctionVerdict.headline);
-  });
+  }));
 
-  document.querySelector<HTMLButtonElement>('#e5-reveal')?.addEventListener('click', async () => {
+  document.querySelector<HTMLButtonElement>('#e5-reveal')?.addEventListener('click', () => withAuctionLock(async () => {
     if (!state.auctionCommitted.length) {
       state.auctionVerdict = { kind: 'info', headline: 'Publish commitments first.' };
-      render(state.auctionVerdict.headline);
       return;
     }
     for (const entry of state.auctionCommitted) {
@@ -823,19 +849,20 @@ const bindEvents = (): void => {
           headline: 'An opening did not verify.',
           detail: `${entry.bidder}'s revealed bid does not match their commitment.`
         };
-        render(state.auctionVerdict.headline);
         return;
       }
     }
     state.auctionRevealed = true;
-    const winner = state.auctionCommitted.reduce((a, b) => (a.bid >= b.bid ? a : b));
+    const highest = state.auctionCommitted.reduce((max, entry) => entry.bid > max ? entry.bid : max, 0n);
+    const leaders = state.auctionCommitted.filter((entry) => entry.bid === highest).map((entry) => entry.bidder);
     state.auctionVerdict = {
       kind: 'ok',
-      headline: `Winner: ${winner.bidder} with a bid of ${winner.bid}.`,
+      headline: leaders.length === 1
+        ? `Winner: ${leaders[0]} with a bid of ${highest}.`
+        : `Tie for first place: ${leaders.join(', ')} with a bid of ${highest} each.`,
       detail: 'Every opening matched its commitment, so the revealed bids match the sealed ones. The commitments stop bid changes, but this toy assumes everyone reveals; withholding still needs a policy.'
     };
-    render(state.auctionVerdict.headline);
-  });
+  }));
 
   /* --- Exhibit 5: commit-based coin flip and selective abort --- */
   document.querySelector<HTMLButtonElement>('#coin-commit')?.addEventListener('click', async () => {
